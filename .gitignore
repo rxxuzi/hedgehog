@@ -1,0 +1,30 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+/.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Hedgehog
+*.hog.out
+.hog/
+
+
+# Test artifacts
+/tmp/
+/test_output/
+
+# Claude
+.claude
+CLAUDE.*
+
