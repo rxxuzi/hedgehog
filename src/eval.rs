@@ -710,20 +710,20 @@ impl Evaluator {
             Expr::TypeOf(expr) => {
                 let value = self.eval_expr(expr)?;
                 let type_name = match value {
-                    Value::Int(_) => "@i64",
-                    Value::Float(_) => "@f64",
+                    Value::Int(_) => "@i",
+                    Value::Float(_) => "@f",
                     Value::String(_) => "@t",
-                    Value::Bool(_) => "@b",
-                    Value::List(_) => "@[]",
-                    Value::Record(_) => "@{}",
-                    Value::Tuple(_) => "@()",
+                    Value::Bool(_) => "@q",
+                    Value::List(_) => "[]",
+                    Value::Record(_) => "{}",
+                    Value::Tuple(_) => "()",
                     Value::Some(_) => "@?",
                     Value::None => "@?",
                     Value::Ok(_) => "@!",
                     Value::Err(_) => "@!",
                     Value::Func(_) => "@fn",
                     Value::Builtin(_) => "@fn",
-                    Value::Unit => "@unit",
+                    Value::Unit => "@n",
                 };
                 Ok(Value::String(type_name.to_string()))
             }
@@ -817,8 +817,7 @@ impl Evaluator {
     /// Convert a value to a specific type
     fn convert_type(&self, value: Value, ty: &Type, loc: Loc) -> Result<Value, EvalError> {
         match ty {
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 |
-            Type::U8 | Type::U16 | Type::U32 | Type::U64 => {
+            Type::Int => {
                 match value {
                     Value::Int(n) => Ok(Value::Int(n)),
                     Value::Float(f) => Ok(Value::Int(f as i64)),
@@ -829,7 +828,7 @@ impl Evaluator {
                     _ => Err(EvalError::new("Cannot convert to integer", loc.line, loc.column))
                 }
             }
-            Type::F32 | Type::F64 => {
+            Type::Float => {
                 match value {
                     Value::Float(f) => Ok(Value::Float(f)),
                     Value::Int(n) => Ok(Value::Float(n as f64)),
@@ -839,35 +838,38 @@ impl Evaluator {
                     _ => Err(EvalError::new("Cannot convert to float", loc.line, loc.column))
                 }
             }
-            Type::Bool => {
+            Type::Query => {
                 match value {
                     Value::Bool(b) => Ok(Value::Bool(b)),
                     Value::Int(n) => Ok(Value::Bool(n != 0)),
                     Value::String(s) => Ok(Value::Bool(!s.is_empty() && s != "false")),
-                    _ => Err(EvalError::new("Cannot convert to bool", loc.line, loc.column))
+                    _ => Err(EvalError::new("Cannot convert to query", loc.line, loc.column))
                 }
             }
-            Type::Str => {
+            Type::Text => {
                 Ok(Value::String(value.to_string()))
             }
-            Type::Char => {
+            Type::Byte => {
                 match value {
+                    Value::Int(n) => {
+                        if n >= 0 && n <= 255 {
+                            Ok(Value::Int(n))
+                        } else {
+                            Err(EvalError::new("Integer out of byte range (0-255)", loc.line, loc.column))
+                        }
+                    }
                     Value::String(s) => {
                         if s.len() == 1 {
-                            Ok(Value::String(s))
+                            Ok(Value::Int(s.bytes().next().unwrap() as i64))
                         } else {
-                            Err(EvalError::new("String must be single character", loc.line, loc.column))
+                            Err(EvalError::new("String must be single byte", loc.line, loc.column))
                         }
                     }
-                    Value::Int(n) => {
-                        if n >= 0 && n <= 127 {
-                            Ok(Value::String((n as u8 as char).to_string()))
-                        } else {
-                            Err(EvalError::new("Integer out of char range", loc.line, loc.column))
-                        }
-                    }
-                    _ => Err(EvalError::new("Cannot convert to char", loc.line, loc.column))
+                    _ => Err(EvalError::new("Cannot convert to byte", loc.line, loc.column))
                 }
+            }
+            Type::Nothing => {
+                Ok(Value::Unit)
             }
             _ => Ok(value) // For other types, return as-is
         }
@@ -876,14 +878,14 @@ impl Evaluator {
     /// Check if a value matches a type
     fn check_type(&self, value: &Value, ty: &Type) -> bool {
         match (value, ty) {
-            (Value::Int(_), Type::I8 | Type::I16 | Type::I32 | Type::I64 |
-                           Type::U8 | Type::U16 | Type::U32 | Type::U64) => true,
-            (Value::Float(_), Type::F32 | Type::F64) => true,
-            (Value::Bool(_), Type::Bool) => true,
-            (Value::String(_), Type::Str | Type::Char) => true,
+            (Value::Int(_), Type::Int | Type::Byte) => true,
+            (Value::Float(_), Type::Float) => true,
+            (Value::Bool(_), Type::Query) => true,
+            (Value::String(_), Type::Text) => true,
             (Value::List(_), Type::List(_)) => true,
             (Value::Some(_) | Value::None, Type::Option(_)) => true,
             (Value::Ok(_) | Value::Err(_), Type::Result(_, _)) => true,
+            (Value::Unit, Type::Nothing) => true,
             _ => false
         }
     }

@@ -39,27 +39,28 @@ impl<T> Node<T> {
 /// Type annotation
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    // Signed integers
-    I8, I16, I32, I64,
-    // Unsigned integers
-    U8, U16, U32, U64,
-    // Floats
-    F32, F64,
-    // Other primitives
-    Bool,   // @b
-    Str,    // @t (text)
-    Char,   // @c
+    // Primitives
+    Int,      // @i - integer
+    Float,    // @f - floating point
+    Text,     // @t - string/text
+    Byte,     // @b - byte
+    Query,    // @q - boolean (query)
+    Nothing,  // @n - unit/void
+
     // Generics
-    List(Box<Type>),            // @[T]
-    Option(Box<Type>),          // @?[T]
-    Result(Box<Type>, Box<Type>), // @![T E]
-    Channel(Box<Type>),         // @chan[T]
+    List(Box<Type>),              // []T
+    Option(Box<Type>),            // @?T
+    Result(Box<Type>, Box<Type>), // @!T E
+    Channel(Box<Type>),           // @cT
+
     // Compound
-    Record(Vec<(String, Type)>),
+    Record(Vec<(String, Type)>),  // {field @t, ...}
     Tuple(Vec<Type>),
     Func(Vec<Type>, Box<Type>),
+
     // Named type (user-defined)
     Named(String),
+
     // Any type (for inference)
     Any,
 }
@@ -211,7 +212,7 @@ pub enum Expr {
     /// Parallel each: &% list [x] expr
     ParEach(Box<Node<Expr>>, String, Box<Node<Expr>>),
 
-    /// Parallel join: <&> { expr1; expr2 }
+    /// Parallel join: &= tasks
     ParJoin(Vec<Node<Expr>>),
 
     /// Parallel race: &? { expr1; expr2 }

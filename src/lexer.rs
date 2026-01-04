@@ -65,7 +65,7 @@ pub enum Token {
     ParEach,    // &%
     ParPipe,    // &>
     Background, // &!
-    Join,       // <&>
+    ParJoin,    // &=
     Race,       // &?
 
     // Command
@@ -673,6 +673,7 @@ impl<'a> Lexer<'a> {
                 Some('>') => { self.advance(); Token::ParPipe }
                 Some('!') => { self.advance(); Token::Background }
                 Some('?') => { self.advance(); Token::Race }
+                Some('=') => { self.advance(); Token::ParJoin }
                 _ => {
                     return Err(LexerError {
                         message: format!("Unexpected character after '&': {:?}", self.peek()),
@@ -707,18 +708,6 @@ impl<'a> Lexer<'a> {
                 Some('+') => { self.advance(); Token::FileRead }
                 Some('*') => { self.advance(); Token::BinaryRead }
                 Some('-') => { self.advance(); Token::ChanRecv }
-                Some('&') => {
-                    self.advance();
-                    if self.peek() == Some(&'>') {
-                        self.advance();
-                        Token::Join
-                    } else {
-                        return Err(LexerError {
-                            message: "Expected '>' after '<&'".to_string(),
-                            span,
-                        });
-                    }
-                }
                 _ => {
                     return Err(LexerError {
                         message: format!("Unexpected character after '<': {:?}", self.peek()),
@@ -1126,7 +1115,7 @@ mod tests {
             Token::Ident("body".to_string()),
         ]);
         assert_eq!(tokenize("&!"), vec![Token::Background]);
-        assert_eq!(tokenize("<&>"), vec![Token::Join]);
+        assert_eq!(tokenize("&="), vec![Token::ParJoin]);
         assert_eq!(tokenize("&?"), vec![Token::Race]);
     }
 
@@ -1283,10 +1272,10 @@ mod tests {
     // === Type Check ===
     #[test]
     fn test_type_check() {
-        assert_eq!(tokenize(":? $x @u8"), vec![
+        assert_eq!(tokenize(":? $x @i"), vec![
             Token::TypeCheck,
             Token::Dollar, Token::Ident("x".to_string()),
-            Token::TypeLit("u8".to_string()),
+            Token::TypeLit("i".to_string()),
         ]);
     }
 

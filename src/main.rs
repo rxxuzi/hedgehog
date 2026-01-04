@@ -14,7 +14,7 @@ use std::env as std_env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 
-const VERSION: &str = "0.1.0";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
     let args: Vec<String> = std_env::args().collect();

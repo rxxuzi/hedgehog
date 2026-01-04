@@ -388,8 +388,8 @@ impl Parser {
             // Parallel each: &% list [x] body
             Token::ParEach => self.parse_par_each(),
 
-            // Join: <&> { ... }
-            Token::Join => self.parse_join(),
+            // Join: &= [...] or &= { ... }
+            Token::ParJoin => self.parse_join(),
 
             // Race: &? { ... }
             Token::Race => self.parse_race(),
@@ -838,10 +838,10 @@ impl Parser {
         Ok(Node::new(Expr::ParEach(Box::new(list), var, Box::new(body)), loc))
     }
 
-    /// Parse join: <&> { expr1; expr2 }
+    /// Parse join: &= tasks
     fn parse_join(&mut self) -> Result<Node<Expr>, ParseError> {
         let loc = self.current_span();
-        self.advance(); // consume <&>
+        self.advance(); // consume &=
 
         self.skip_newlines();
         self.expect(&Token::LBrace)?;
@@ -1084,21 +1084,14 @@ impl Parser {
             }
             Token::Ident(name) => {
                 self.advance();
-                // Check for primitive types first
+                // Check for primitive types
                 match name.as_str() {
-                    "i8" => Ok(Type::I8),
-                    "i16" => Ok(Type::I16),
-                    "i32" => Ok(Type::I32),
-                    "i64" => Ok(Type::I64),
-                    "u8" => Ok(Type::U8),
-                    "u16" => Ok(Type::U16),
-                    "u32" => Ok(Type::U32),
-                    "u64" => Ok(Type::U64),
-                    "f32" => Ok(Type::F32),
-                    "f64" => Ok(Type::F64),
-                    "bool" => Ok(Type::Bool),
-                    "str" => Ok(Type::Str),
-                    "char" => Ok(Type::Char),
+                    "i" | "int" => Ok(Type::Int),
+                    "f" | "float" => Ok(Type::Float),
+                    "t" | "text" | "str" => Ok(Type::Text),
+                    "b" | "byte" => Ok(Type::Byte),
+                    "q" | "query" | "bool" => Ok(Type::Query),
+                    "n" | "nothing" | "unit" => Ok(Type::Nothing),
                     _ => Ok(Type::Named(name))
                 }
             }
@@ -1108,72 +1101,52 @@ impl Parser {
 
     /// Parse type from @-prefixed type literal
     fn parse_type_from_name(&mut self, name: &str, loc: Loc) -> Result<Type, ParseError> {
-        // Handle generic types like @?[T], @![T E], @chan[T], @[T]
-        if name.starts_with("?[") && name.ends_with(']') {
-            // Option type: @?[T]
-            let inner = &name[2..name.len()-1];
+        // Generic types
+
+        // Option: @?T (e.g., @?i, @?t)
+        if name.starts_with('?') {
+            let inner = &name[1..];
             let inner_type = self.type_from_simple_name(inner)?;
             return Ok(Type::Option(Box::new(inner_type)));
         }
-        if name.starts_with("![") && name.ends_with(']') {
-            // Result type: @![T E] - simplified parsing
-            let inner = &name[2..name.len()-1];
+
+        // Result: @!T or @!T E (e.g., @!i, @!i t)
+        if name.starts_with('!') {
+            let inner = &name[1..];
             let parts: Vec<&str> = inner.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let ok_type = self.type_from_simple_name(parts[0])?;
-                let err_type = self.type_from_simple_name(parts[1])?;
-                return Ok(Type::Result(Box::new(ok_type), Box::new(err_type)));
+            if parts.is_empty() {
+                return Err(ParseError::new("Invalid Result type", loc.line, loc.column));
             }
-            return Err(ParseError::new("Invalid Result type", loc.line, loc.column));
+            let ok_type = self.type_from_simple_name(parts[0])?;
+            let err_type = if parts.len() >= 2 {
+                self.type_from_simple_name(parts[1])?
+            } else {
+                Type::Text // default error type
+            };
+            return Ok(Type::Result(Box::new(ok_type), Box::new(err_type)));
         }
-        if name.starts_with("chan[") && name.ends_with(']') {
-            // Channel type: @chan[T]
-            let inner = &name[5..name.len()-1];
+
+        // Channel: @cT (e.g., @ci, @ct)
+        if name.starts_with('c') && name.len() > 1 {
+            let inner = &name[1..];
             let inner_type = self.type_from_simple_name(inner)?;
             return Ok(Type::Channel(Box::new(inner_type)));
         }
-        if name.starts_with('[') && name.ends_with(']') {
-            // List type: @[T]
-            let inner = &name[1..name.len()-1];
-            let inner_type = self.type_from_simple_name(inner)?;
-            return Ok(Type::List(Box::new(inner_type)));
-        }
 
         // Simple types
-        match name {
-            "i8" => Ok(Type::I8),
-            "i16" => Ok(Type::I16),
-            "i32" => Ok(Type::I32),
-            "i64" => Ok(Type::I64),
-            "u8" => Ok(Type::U8),
-            "u16" => Ok(Type::U16),
-            "u32" => Ok(Type::U32),
-            "u64" => Ok(Type::U64),
-            "f32" => Ok(Type::F32),
-            "f64" => Ok(Type::F64),
-            "b" => Ok(Type::Bool),
-            "t" => Ok(Type::Str),
-            "c" => Ok(Type::Char),
-            _ => Ok(Type::Named(name.to_string()))
-        }
+        self.type_from_simple_name(name)
     }
 
     /// Convert simple type name to Type
     fn type_from_simple_name(&self, name: &str) -> Result<Type, ParseError> {
         match name {
-            "i8" | "@i8" => Ok(Type::I8),
-            "i16" | "@i16" => Ok(Type::I16),
-            "i32" | "@i32" => Ok(Type::I32),
-            "i64" | "@i64" => Ok(Type::I64),
-            "u8" | "@u8" => Ok(Type::U8),
-            "u16" | "@u16" => Ok(Type::U16),
-            "u32" | "@u32" => Ok(Type::U32),
-            "u64" | "@u64" => Ok(Type::U64),
-            "f32" | "@f32" => Ok(Type::F32),
-            "f64" | "@f64" => Ok(Type::F64),
-            "b" | "@b" => Ok(Type::Bool),
-            "t" | "@t" => Ok(Type::Str),
-            "c" | "@c" => Ok(Type::Char),
+            // Primitives
+            "i" | "@i" => Ok(Type::Int),
+            "f" | "@f" => Ok(Type::Float),
+            "t" | "@t" => Ok(Type::Text),
+            "b" | "@b" => Ok(Type::Byte),
+            "q" | "@q" => Ok(Type::Query),
+            "n" | "@n" => Ok(Type::Nothing),
             _ => Ok(Type::Named(name.to_string()))
         }
     }
@@ -1320,12 +1293,12 @@ mod tests {
 
     #[test]
     fn test_parse_typed_bind() {
-        let prog = parse_ok("^: x i32 42");
+        let prog = parse_ok("^: x @i 42");
         assert_eq!(prog.stmts.len(), 1);
         match &prog.stmts[0].node {
             Stmt::TypedBind(name, ty, _) => {
                 assert_eq!(name, "x");
-                assert_eq!(*ty, Type::I32);
+                assert_eq!(*ty, Type::Int);
             }
             _ => panic!("Expected TypedBind"),
         }
