@@ -84,7 +84,12 @@ pub enum Token {
     LibImport,  // /+
     AliasImport,// /=
     RelImport,  // /.
-    Qualify,    // ::
+
+    // Data Operations
+    Pipeline,   // ::
+    VarApply,   // :*
+    NestAccess, // :.
+    Terminator, // ==
 
     // Type Operations
     TypeCheck,  // :?
@@ -693,13 +698,26 @@ impl<'a> Lexer<'a> {
                 }
             },
 
-            // : berries (type operations)
+            // : berries (type operations & data operations)
             ':' => match self.peek() {
                 Some('?') => { self.advance(); Token::TypeCheck }
                 Some('>') => { self.advance(); Token::TypeCast }
                 Some('@') => { self.advance(); Token::TypeOf }
-                Some(':') => { self.advance(); Token::Qualify }
+                Some(':') => { self.advance(); Token::Pipeline }
+                Some('*') => { self.advance(); Token::VarApply }
+                Some('.') => { self.advance(); Token::NestAccess }
                 _ => Token::Colon,
+            },
+
+            // = berries (terminator)
+            '=' => match self.peek() {
+                Some('=') => { self.advance(); Token::Terminator }
+                _ => {
+                    return Err(LexerError {
+                        message: format!("Unexpected character after '=': {:?}", self.peek()),
+                        span,
+                    });
+                }
             },
 
             // < berries (input & channel)
@@ -1384,6 +1402,62 @@ mod tests {
             Token::Newline,
             Token::Ident("b".to_string()),
             Token::Eof,
+        ]);
+    }
+
+    // === Data Operations (v0.2.2) ===
+    #[test]
+    fn test_pipeline() {
+        assert_eq!(tokenize(":: $nums"), vec![
+            Token::Pipeline,
+            Token::Dollar,
+            Token::Ident("nums".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_var_apply() {
+        assert_eq!(tokenize(":* (.+) 1 2 3"), vec![
+            Token::VarApply,
+            Token::LParen,
+            Token::Add,
+            Token::RParen,
+            Token::Int(1),
+            Token::Int(2),
+            Token::Int(3),
+        ]);
+    }
+
+    #[test]
+    fn test_nest_access() {
+        assert_eq!(tokenize(":. $user [name]"), vec![
+            Token::NestAccess,
+            Token::Dollar,
+            Token::Ident("user".to_string()),
+            Token::LBracket,
+            Token::Ident("name".to_string()),
+            Token::RBracket,
+        ]);
+    }
+
+    #[test]
+    fn test_terminator() {
+        assert_eq!(tokenize("=="), vec![Token::Terminator]);
+    }
+
+    #[test]
+    fn test_pipeline_with_terminator() {
+        assert_eq!(tokenize(":: $x %> [n] $n =="), vec![
+            Token::Pipeline,
+            Token::Dollar,
+            Token::Ident("x".to_string()),
+            Token::Map,
+            Token::LBracket,
+            Token::Ident("n".to_string()),
+            Token::RBracket,
+            Token::Dollar,
+            Token::Ident("n".to_string()),
+            Token::Terminator,
         ]);
     }
 }

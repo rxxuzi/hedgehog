@@ -809,6 +809,101 @@ impl Evaluator {
                 Err(EvalError::new("Channels not yet implemented", loc.line, loc.column))
             }
 
+            // Pipeline: :: initial ops... ==
+            // Thread the value through each operation
+            Expr::Pipeline(initial, ops) => {
+                let mut value = self.eval_expr(initial)?;
+                for op in ops {
+                    // Each op should be a function call that takes the piped value
+                    match &op.node {
+                        Expr::Call(func, args) => {
+                            // Prepend the piped value to the args
+                            let func_val = self.eval_expr(func)?;
+                            let mut all_args = vec![value];
+                            for arg in args {
+                                all_args.push(self.eval_expr(arg)?);
+                            }
+                            value = self.eval_call(func_val, all_args, op.loc.line, op.loc.column)?;
+                        }
+                        Expr::Var(name) => {
+                            // Treat as function call with piped value as only arg
+                            let func_val = self.env.borrow().get(name)
+                                .ok_or_else(|| EvalError::new(format!("Undefined: {}", name), op.loc.line, op.loc.column))?;
+                            value = self.eval_call(func_val, vec![value], op.loc.line, op.loc.column)?;
+                        }
+                        _ => {
+                            // For other expressions, just evaluate and replace
+                            value = self.eval_expr(op)?;
+                        }
+                    }
+                }
+                Ok(value)
+            }
+
+            // Variadic apply: :* func args... ==
+            // Apply function repeatedly: func(func(func(arg1, arg2), arg3), arg4)...
+            Expr::VarApply(func, args) => {
+                if args.is_empty() {
+                    return Err(EvalError::new("VarApply requires at least one argument", loc.line, loc.column));
+                }
+                let func_val = self.eval_expr(func)?;
+                let mut iter = args.iter();
+                let first = iter.next().unwrap();
+                let mut acc = self.eval_expr(first)?;
+                for arg in iter {
+                    let arg_val = self.eval_expr(arg)?;
+                    acc = self.eval_call(func_val.clone(), vec![acc, arg_val], loc.line, loc.column)?;
+                }
+                Ok(acc)
+            }
+
+            // Nested access: :. data [path]
+            Expr::NestAccess(data, path) => {
+                let data_val = self.eval_expr(data)?;
+                let path_val = self.eval_expr(path)?;
+
+                // Path should be a list of keys/indices
+                let keys = match path_val {
+                    Value::List(items) => items,
+                    _ => return Err(EvalError::new("NestAccess path must be a list", loc.line, loc.column)),
+                };
+
+                let mut current = data_val;
+                for key in keys {
+                    current = match (&current, &key) {
+                        // Record field access
+                        (Value::Record(fields), Value::String(name)) => {
+                            fields.get(name)
+                                .cloned()
+                                .ok_or_else(|| EvalError::new(format!("Field not found: {}", name), loc.line, loc.column))?
+                        }
+                        // List index access
+                        (Value::List(items), Value::Int(idx)) => {
+                            let i = *idx as usize;
+                            items.get(i)
+                                .cloned()
+                                .ok_or_else(|| EvalError::new(format!("Index out of bounds: {}", idx), loc.line, loc.column))?
+                        }
+                        // String to field name for records
+                        (Value::Record(fields), Value::Int(idx)) => {
+                            // Try to get field by index (for tuple-like records)
+                            fields.values().nth(*idx as usize)
+                                .cloned()
+                                .ok_or_else(|| EvalError::new(format!("Index out of bounds: {}", idx), loc.line, loc.column))?
+                        }
+                        // Identifier in path as field name
+                        (Value::Record(fields), key) => {
+                            let name = key.to_string();
+                            fields.get(&name)
+                                .cloned()
+                                .ok_or_else(|| EvalError::new(format!("Field not found: {}", name), loc.line, loc.column))?
+                        }
+                        _ => return Err(EvalError::new("Invalid nested access", loc.line, loc.column)),
+                    };
+                }
+                Ok(current)
+            }
+
             // TODO: Implement remaining expressions
             _ => Err(EvalError::new("Not yet implemented", loc.line, loc.column))
         }
@@ -1458,5 +1553,43 @@ mod tests {
     #[test]
     fn test_eval_type_mismatch() {
         assert!(eval(".+ 1 \"hello\"").is_err());
+    }
+
+    // === v0.2.2: Pipeline ===
+    #[test]
+    fn test_eval_pipeline() {
+        // Simple pipeline: get head of list
+        assert_eq!(eval_ok(":: [1 2 3] (head) =="), Value::Int(1));
+    }
+
+    // === v0.2.2: VarApply ===
+    #[test]
+    fn test_eval_var_apply() {
+        // Variadic apply: concat lists
+        let result = eval_ok(":* (concat) [1] [2] [3] ==");
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 3);
+                assert_eq!(items[0], Value::Int(1));
+                assert_eq!(items[1], Value::Int(2));
+                assert_eq!(items[2], Value::Int(3));
+            }
+            _ => panic!("Expected List"),
+        }
+    }
+
+    // === v0.2.2: NestAccess ===
+    #[test]
+    fn test_eval_nest_access() {
+        // Nested access into record (using string for field name)
+        let code = "^= user {name: \"Alice\", age: 30}; :. $user [\"name\"]";
+        assert_eq!(eval_ok(code), Value::String("Alice".to_string()));
+    }
+
+    #[test]
+    fn test_eval_nest_access_list() {
+        // Nested access into list
+        let code = ":. [10 20 30] [1]";
+        assert_eq!(eval_ok(code), Value::Int(20));
     }
 }

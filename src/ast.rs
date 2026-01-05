@@ -274,6 +274,15 @@ pub enum Expr {
 
     /// Channel receive: <- channel (1 child)
     ChanRecv(Box<Node<Expr>>),
+
+    /// Pipeline: :: expr ops... == (delimited by ==)
+    Pipeline(Box<Node<Expr>>, Vec<Node<Expr>>),
+
+    /// Variadic apply: :* func args... == (delimited by ==)
+    VarApply(Box<Node<Expr>>, Vec<Node<Expr>>),
+
+    /// Nested access: :. expr path (2 children)
+    NestAccess(Box<Node<Expr>>, Box<Node<Expr>>),
 }
 
 /// Statement

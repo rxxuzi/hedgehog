@@ -464,6 +464,44 @@ impl Parser {
                 Ok(Node::new(Expr::ChanSend(Box::new(channel), Box::new(value)), loc))
             }
 
+            // Pipeline: :: expr ops... == (delimited by ==)
+            Token::Pipeline => {
+                self.advance();
+                self.skip_newlines();
+                let initial = self.parse_expr()?;
+                self.skip_newlines();
+                let mut ops = Vec::new();
+                while !self.check(&Token::Terminator) && !self.check(&Token::Eof) {
+                    ops.push(self.parse_expr()?);
+                    self.skip_newlines();
+                }
+                self.expect(&Token::Terminator)?;
+                Ok(Node::new(Expr::Pipeline(Box::new(initial), ops), loc))
+            }
+
+            // Variadic apply: :* func args... == (delimited by ==)
+            Token::VarApply => {
+                self.advance();
+                self.skip_newlines();
+                let func = self.parse_expr()?;
+                self.skip_newlines();
+                let mut args = Vec::new();
+                while !self.check(&Token::Terminator) && !self.check(&Token::Eof) {
+                    args.push(self.parse_expr()?);
+                    self.skip_newlines();
+                }
+                self.expect(&Token::Terminator)?;
+                Ok(Node::new(Expr::VarApply(Box::new(func), args), loc))
+            }
+
+            // Nested access: :. expr path (2 children)
+            Token::NestAccess => {
+                self.advance();
+                let expr = self.parse_expr()?;
+                let path = self.parse_expr()?;
+                Ok(Node::new(Expr::NestAccess(Box::new(expr), Box::new(path)), loc))
+            }
+
             // Lambda: |> [args] body
             Token::Lambda => {
                 self.advance();
@@ -1172,7 +1210,7 @@ impl Parser {
             }
 
             // Check for :: or . separator
-            if self.check(&Token::Qualify) {
+            if self.check(&Token::Pipeline) {
                 path.push_str("::");
                 self.advance();
             } else if let Token::Ident(ref name) = self.current() {
@@ -1200,7 +1238,7 @@ impl Parser {
             }
 
             // Check for path separator
-            if self.check(&Token::Qualify) {
+            if self.check(&Token::Pipeline) {
                 path.push_str("::");
                 self.advance();
             } else if let Token::Ident(ref next) = self.current() {
@@ -1704,5 +1742,63 @@ mod tests {
     #[test]
     fn test_parse_error_unclosed_paren() {
         assert!(parse("(Add 1 2").is_err());
+    }
+
+    // === Data Operations (v0.2.2) ===
+    #[test]
+    fn test_parse_pipeline() {
+        // Simple pipeline with function calls
+        let expr = parse_expr(":: [1 2 3] (head) ==");
+        match expr {
+            Expr::Pipeline(initial, ops) => {
+                match initial.node {
+                    Expr::List(_) => {}
+                    _ => panic!("Expected List"),
+                }
+                assert_eq!(ops.len(), 1);
+            }
+            _ => panic!("Expected Pipeline"),
+        }
+    }
+
+    #[test]
+    fn test_parse_var_apply() {
+        // VarApply with a function and multiple args
+        let expr = parse_expr(":* (concat) [1] [2] [3] ==");
+        match expr {
+            Expr::VarApply(func, args) => {
+                match func.node {
+                    Expr::Var(name) => assert_eq!(name, "concat"),
+                    _ => panic!("Expected Var for func"),
+                }
+                assert_eq!(args.len(), 3);
+            }
+            _ => panic!("Expected VarApply"),
+        }
+    }
+
+    #[test]
+    fn test_parse_nest_access() {
+        let expr = parse_expr(":. $user [name]");
+        match expr {
+            Expr::NestAccess(data, path) => {
+                match data.node {
+                    Expr::Var(name) => assert_eq!(name, "user"),
+                    _ => panic!("Expected Var"),
+                }
+                match path.node {
+                    Expr::List(items) => assert_eq!(items.len(), 1),
+                    _ => panic!("Expected List for path"),
+                }
+            }
+            _ => panic!("Expected NestAccess"),
+        }
+    }
+
+    #[test]
+    fn test_parse_terminator() {
+        // Terminator should only be valid in context of :: or :*
+        let result = parse("==");
+        assert!(result.is_err());
     }
 }
