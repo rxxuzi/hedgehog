@@ -217,10 +217,12 @@ impl Evaluator {
                 Ok(Value::Unit)
             }
 
-            Stmt::TypedFuncDef(name, _param_types, _ret_type, params, body) => {
+            Stmt::TypedFuncDef(name, typed_params, _ret_type, body) => {
+                // Extract parameter names from typed params
+                let params: Vec<String> = typed_params.iter().map(|(n, _)| n.clone()).collect();
                 let func = FuncDef::new(
                     name.clone(),
-                    params.clone(),
+                    params,
                     body.clone(),
                     self.env.clone(),
                 );
@@ -427,6 +429,18 @@ impl Evaluator {
                 let func = FuncDef::new(
                     "<lambda>".to_string(),
                     params.clone(),
+                    (**body).clone(),
+                    self.env.clone(),
+                );
+                Ok(Value::Func(Rc::new(func)))
+            }
+
+            Expr::TypedLambda(typed_params, _ret_type, body) => {
+                // Extract parameter names from typed params
+                let params: Vec<String> = typed_params.iter().map(|(n, _)| n.clone()).collect();
+                let func = FuncDef::new(
+                    "<lambda>".to_string(),
+                    params,
                     (**body).clone(),
                     self.env.clone(),
                 );
@@ -1591,5 +1605,18 @@ mod tests {
         // Nested access into list
         let code = ":. [10 20 30] [1]";
         assert_eq!(eval_ok(code), Value::Int(20));
+    }
+
+    // === v0.2.3: Typed Functions ===
+    #[test]
+    fn test_eval_typed_func() {
+        let code = "|: Add [a @i b @i] @i .+ $a $b; (Add 3 4)";
+        assert_eq!(eval_ok(code), Value::Int(7));
+    }
+
+    #[test]
+    fn test_eval_typed_lambda() {
+        let code = "^= double |; [x @i] @i .* $x 2; ($double 5)";
+        assert_eq!(eval_ok(code), Value::Int(10));
     }
 }

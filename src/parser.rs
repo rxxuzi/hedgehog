@@ -157,6 +157,16 @@ impl Parser {
                 Ok(Node::new(Stmt::FuncDef(name, params, body), loc))
             }
 
+            // Typed function definition: |: Name [a @i b @i] @i body
+            Token::TypedFunc => {
+                self.advance();
+                let name = self.parse_ident()?;
+                let typed_params = self.parse_typed_param_list()?;
+                let ret_type = self.parse_type()?;
+                let body = self.parse_expr()?;
+                Ok(Node::new(Stmt::TypedFuncDef(name, typed_params, ret_type, body), loc))
+            }
+
             // Output: ~> expr
             Token::Out => {
                 self.advance();
@@ -508,6 +518,15 @@ impl Parser {
                 let params = self.parse_param_list()?;
                 let body = self.parse_expr()?;
                 Ok(Node::new(Expr::Lambda(params, Box::new(body)), loc))
+            }
+
+            // Typed Lambda: |; [x @i] @i body
+            Token::TypedLambda => {
+                self.advance();
+                let typed_params = self.parse_typed_param_list()?;
+                let ret_type = self.parse_type()?;
+                let body = self.parse_expr()?;
+                Ok(Node::new(Expr::TypedLambda(typed_params, ret_type, Box::new(body)), loc))
             }
 
             // List: [...]
@@ -1104,6 +1123,26 @@ impl Parser {
                 self.advance();
             }
             params.push(self.parse_ident()?);
+        }
+
+        self.skip_newlines();
+        self.expect(&Token::RBracket)?;
+        Ok(params)
+    }
+
+    /// Parse typed parameter list: [a @i b @i] -> Vec<(String, Type)>
+    fn parse_typed_param_list(&mut self) -> Result<Vec<(String, Type)>, ParseError> {
+        self.skip_newlines();
+        self.expect(&Token::LBracket)?;
+
+        let mut params = Vec::new();
+        while !self.check(&Token::RBracket) && !self.check(&Token::Eof) {
+            self.skip_newlines();
+            if self.check(&Token::RBracket) { break; }
+
+            let name = self.parse_ident()?;
+            let ty = self.parse_type()?;
+            params.push((name, ty));
         }
 
         self.skip_newlines();
@@ -1800,5 +1839,35 @@ mod tests {
         // Terminator should only be valid in context of :: or :*
         let result = parse("==");
         assert!(result.is_err());
+    }
+
+    // === v0.2.3: Typed Functions ===
+    #[test]
+    fn test_parse_typed_func() {
+        let prog = parse_ok("|: Add [a @i b @i] @i .+ $a $b");
+        assert_eq!(prog.stmts.len(), 1);
+        match &prog.stmts[0].node {
+            Stmt::TypedFuncDef(name, params, ret_type, _body) => {
+                assert_eq!(name, "Add");
+                assert_eq!(params.len(), 2);
+                assert_eq!(params[0].0, "a");
+                assert_eq!(params[1].0, "b");
+                assert_eq!(*ret_type, Type::Int);
+            }
+            _ => panic!("Expected TypedFuncDef"),
+        }
+    }
+
+    #[test]
+    fn test_parse_typed_lambda() {
+        let expr = parse_expr("|; [x @i] @i .* $x 2");
+        match expr {
+            Expr::TypedLambda(params, ret_type, _body) => {
+                assert_eq!(params.len(), 1);
+                assert_eq!(params[0].0, "x");
+                assert_eq!(ret_type, Type::Int);
+            }
+            _ => panic!("Expected TypedLambda"),
+        }
     }
 }

@@ -179,6 +179,9 @@ pub enum Expr {
     /// Lambda: |> [x] .* $x 2
     Lambda(Vec<String>, Box<Node<Expr>>),
 
+    /// Typed Lambda: |; [x @i] @i .* $x 2
+    TypedLambda(Vec<(String, Type)>, Type, Box<Node<Expr>>),
+
     /// Conditional: ?: cond then else
     Cond(Box<Node<Expr>>, Box<Node<Expr>>, Box<Node<Expr>>),
 
@@ -300,8 +303,8 @@ pub enum Stmt {
     /// Function definition: |= Name [args] body
     FuncDef(String, Vec<String>, Node<Expr>),
 
-    /// Typed function: |: Name [types -> ret] [args] body
-    TypedFuncDef(String, Vec<Type>, Type, Vec<String>, Node<Expr>),
+    /// Typed function: |: Name [a @i b @i] @i body
+    TypedFuncDef(String, Vec<(String, Type)>, Type, Node<Expr>),
 
     /// Output: ~> expr
     Output(Node<Expr>),

@@ -16,8 +16,10 @@ pub enum Token {
     TypedBind,  // ^:
 
     // Function
-    Func,       // |=
-    Lambda,     // |>
+    Func,        // |=
+    Lambda,      // |>
+    TypedFunc,   // |:
+    TypedLambda, // |;
 
     // Output
     Out,        // ~>
@@ -579,6 +581,8 @@ impl<'a> Lexer<'a> {
             '|' => match self.peek() {
                 Some('=') => { self.advance(); Token::Func }
                 Some('>') => { self.advance(); Token::Lambda }
+                Some(':') => { self.advance(); Token::TypedFunc }
+                Some(';') => { self.advance(); Token::TypedLambda }
                 _ => Token::Bar,
             },
 
@@ -792,10 +796,19 @@ impl<'a> Lexer<'a> {
 
             // @ type literals
             '@' => {
-                // Read type name (like @u8, @t, @chan, etc.)
+                // Read type name (like @i, @s, @?i, @!i, []@i, etc.)
                 let mut type_name = String::new();
+                let mut bracket_depth = 0;
                 while let Some(&c) = self.peek() {
-                    if c.is_alphanumeric() || c == '[' || c == ']' || c == '?' || c == '!' {
+                    if c == '[' {
+                        bracket_depth += 1;
+                        type_name.push(c);
+                        self.advance();
+                    } else if c == ']' && bracket_depth > 0 {
+                        bracket_depth -= 1;
+                        type_name.push(c);
+                        self.advance();
+                    } else if c.is_alphanumeric() || c == '?' || c == '!' {
                         type_name.push(c);
                         self.advance();
                     } else {
@@ -940,6 +953,42 @@ mod tests {
             Token::LBracket,
             Token::Ident("x".to_string()),
             Token::RBracket,
+            Token::Mul,
+            Token::Dollar,
+            Token::Ident("x".to_string()),
+            Token::Int(2),
+        ]);
+    }
+
+    #[test]
+    fn test_typed_func() {
+        assert_eq!(tokenize("|: Add [a @i b @i] @i .+ $a $b"), vec![
+            Token::TypedFunc,
+            Token::Ident("Add".to_string()),
+            Token::LBracket,
+            Token::Ident("a".to_string()),
+            Token::TypeLit("i".to_string()),
+            Token::Ident("b".to_string()),
+            Token::TypeLit("i".to_string()),
+            Token::RBracket,
+            Token::TypeLit("i".to_string()),
+            Token::Add,
+            Token::Dollar,
+            Token::Ident("a".to_string()),
+            Token::Dollar,
+            Token::Ident("b".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_typed_lambda() {
+        assert_eq!(tokenize("|; [x @i] @i .* $x 2"), vec![
+            Token::TypedLambda,
+            Token::LBracket,
+            Token::Ident("x".to_string()),
+            Token::TypeLit("i".to_string()),
+            Token::RBracket,
+            Token::TypeLit("i".to_string()),
             Token::Mul,
             Token::Dollar,
             Token::Ident("x".to_string()),
