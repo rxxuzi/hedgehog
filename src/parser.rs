@@ -1088,7 +1088,7 @@ impl Parser {
                 match name.as_str() {
                     "i" | "int" => Ok(Type::Int),
                     "f" | "float" => Ok(Type::Float),
-                    "t" | "text" | "str" => Ok(Type::Text),
+                    "s" | "str" | "string" => Ok(Type::Str),
                     "b" | "byte" => Ok(Type::Byte),
                     "q" | "query" | "bool" => Ok(Type::Query),
                     "n" | "nothing" | "unit" => Ok(Type::Nothing),
@@ -1121,7 +1121,7 @@ impl Parser {
             let err_type = if parts.len() >= 2 {
                 self.type_from_simple_name(parts[1])?
             } else {
-                Type::Text // default error type
+                Type::Str // default error type
             };
             return Ok(Type::Result(Box::new(ok_type), Box::new(err_type)));
         }
@@ -1143,7 +1143,7 @@ impl Parser {
             // Primitives
             "i" | "@i" => Ok(Type::Int),
             "f" | "@f" => Ok(Type::Float),
-            "t" | "@t" => Ok(Type::Text),
+            "s" | "@s" => Ok(Type::Str),
             "b" | "@b" => Ok(Type::Byte),
             "q" | "@q" => Ok(Type::Query),
             "n" | "@n" => Ok(Type::Nothing),

@@ -42,7 +42,7 @@ pub enum Type {
     // Primitives
     Int,      // @i - integer
     Float,    // @f - floating point
-    Text,     // @t - string/text
+    Str,      // @s - string
     Byte,     // @b - byte
     Query,    // @q - boolean (query)
     Nothing,  // @n - unit/void

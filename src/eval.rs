@@ -712,7 +712,7 @@ impl Evaluator {
                 let type_name = match value {
                     Value::Int(_) => "@i",
                     Value::Float(_) => "@f",
-                    Value::String(_) => "@t",
+                    Value::String(_) => "@s",
                     Value::Bool(_) => "@q",
                     Value::List(_) => "[]",
                     Value::Record(_) => "{}",
@@ -846,7 +846,7 @@ impl Evaluator {
                     _ => Err(EvalError::new("Cannot convert to query", loc.line, loc.column))
                 }
             }
-            Type::Text => {
+            Type::Str => {
                 Ok(Value::String(value.to_string()))
             }
             Type::Byte => {
@@ -881,7 +881,7 @@ impl Evaluator {
             (Value::Int(_), Type::Int | Type::Byte) => true,
             (Value::Float(_), Type::Float) => true,
             (Value::Bool(_), Type::Query) => true,
-            (Value::String(_), Type::Text) => true,
+            (Value::String(_), Type::Str) => true,
             (Value::List(_), Type::List(_)) => true,
             (Value::Some(_) | Value::None, Type::Option(_)) => true,
             (Value::Ok(_) | Value::Err(_), Type::Result(_, _)) => true,
