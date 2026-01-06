@@ -96,6 +96,25 @@ impl Env {
     pub fn set_env_var(&self, name: &str, value: &str) {
         std::env::set_var(name, value);
     }
+
+    /// Get a value from the global (root) scope only
+    pub fn get_global(&self, name: &str) -> Option<Value> {
+        if let Some(parent) = &self.parent {
+            parent.borrow().get_global(name)
+        } else {
+            // This is the root scope
+            self.bindings.get(name).cloned()
+        }
+    }
+
+    /// Get a value from the parent scope only (not current, not grandparents)
+    pub fn get_parent(&self, name: &str) -> Option<Value> {
+        if let Some(parent) = &self.parent {
+            parent.borrow().bindings.get(name).cloned()
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for Env {

@@ -338,6 +338,38 @@ impl Parser {
                 Ok(Node::new(Expr::EnvVar(name), loc))
             }
 
+            // Global variable: $>name
+            Token::GlobalRef => {
+                self.advance();
+                let name = self.parse_ident()?;
+                Ok(Node::new(Expr::GlobalVar(name), loc))
+            }
+
+            // Parent scope variable: $<name
+            Token::ParentRef => {
+                self.advance();
+                let name = self.parse_ident()?;
+                Ok(Node::new(Expr::ParentVar(name), loc))
+            }
+
+            // All arguments: $@
+            Token::Args => {
+                self.advance();
+                Ok(Node::new(Expr::Args, loc))
+            }
+
+            // Argument by index: $@.n
+            Token::ArgIndex(idx) => {
+                self.advance();
+                Ok(Node::new(Expr::ArgIndex(idx), loc))
+            }
+
+            // Argument count: $@#
+            Token::ArgCount => {
+                self.advance();
+                Ok(Node::new(Expr::ArgCount, loc))
+            }
+
             // Arithmetic operations
             Token::Add => self.parse_binop(BinOp::Add),
             Token::Sub => self.parse_binop(BinOp::Sub),

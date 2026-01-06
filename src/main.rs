@@ -23,6 +23,7 @@ fn main() {
     let mut code: Option<String> = None;
     let mut check_only = false;
     let mut interactive = false;
+    let mut script_args: Vec<String> = Vec::new();
 
     let mut i = 1;
     while i < args.len() {
@@ -55,7 +56,12 @@ fn main() {
                 std::process::exit(1);
             }
             _ => {
-                file = Some(args[i].clone());
+                if file.is_none() {
+                    file = Some(args[i].clone());
+                } else {
+                    // Additional args are script arguments
+                    script_args.push(args[i].clone());
+                }
             }
         }
         i += 1;
@@ -63,15 +69,15 @@ fn main() {
 
     // Execute based on options
     if let Some(cmd) = code {
-        run_code(&cmd);
+        run_code(&cmd, script_args);
     } else if let Some(path) = file {
         if check_only {
             check_file(&path);
         } else if interactive {
-            run_file(&path);
+            run_file(&path, script_args);
             repl();
         } else {
-            run_file(&path);
+            run_file(&path, script_args);
         }
     } else {
         repl();
@@ -150,9 +156,9 @@ fn repl() {
     }
 }
 
-fn run_file(path: &str) {
+fn run_file(path: &str, args: Vec<String>) {
     match fs::read_to_string(path) {
-        Ok(content) => run_code(&content),
+        Ok(content) => run_code(&content, args),
         Err(e) => {
             eprintln!("hog: cannot open '{}': {}", path, e);
             std::process::exit(1);
@@ -160,10 +166,10 @@ fn run_file(path: &str) {
     }
 }
 
-fn run_code(code: &str) {
+fn run_code(code: &str, args: Vec<String>) {
     match Parser::parse_source(code) {
         Ok(program) => {
-            let mut evaluator = Evaluator::new();
+            let mut evaluator = Evaluator::with_args(args);
             if let Err(e) = evaluator.eval_program(&program) {
                 eprintln!("Error: {}", e);
                 std::process::exit(1);

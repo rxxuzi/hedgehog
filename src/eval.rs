@@ -125,11 +125,17 @@ impl EvalError {
 /// Evaluator
 pub struct Evaluator {
     env: Rc<RefCell<Env>>,
+    args: Value,
 }
 
 impl Evaluator {
     pub fn new() -> Self {
+        Self::with_args(vec![])
+    }
+
+    pub fn with_args(args: Vec<String>) -> Self {
         let env = Env::new().wrap();
+        let args_value = Value::List(args.into_iter().map(Value::String).collect());
 
         // Register built-in functions
         {
@@ -171,11 +177,11 @@ impl Evaluator {
             e.define("max".to_string(), Value::Builtin("max".to_string()));
         }
 
-        Self { env }
+        Self { env, args: args_value }
     }
 
     pub fn with_env(env: Rc<RefCell<Env>>) -> Self {
-        Self { env }
+        Self { env, args: Value::List(vec![]) }
     }
 
     /// Evaluate a program
@@ -336,6 +342,49 @@ impl Evaluator {
                     .ok_or_else(|| {
                         EvalError::new(format!("Undefined environment variable: {}", name), loc.line, loc.column)
                     })
+            }
+
+            // Global variable: $>name - lookup in root scope
+            Expr::GlobalVar(name) => {
+                self.env.borrow().get_global(name)
+                    .ok_or_else(|| {
+                        EvalError::new(format!("Undefined global variable: {}", name), loc.line, loc.column)
+                    })
+            }
+
+            // Parent scope variable: $<name - lookup in parent scope
+            Expr::ParentVar(name) => {
+                self.env.borrow().get_parent(name)
+                    .ok_or_else(|| {
+                        EvalError::new(format!("Undefined parent variable: {}", name), loc.line, loc.column)
+                    })
+            }
+
+            // All arguments: $@
+            Expr::Args => {
+                Ok(self.args.clone())
+            }
+
+            // Argument by index: $@.n
+            Expr::ArgIndex(idx) => {
+                match &self.args {
+                    Value::List(args) => {
+                        args.get(*idx as usize)
+                            .cloned()
+                            .ok_or_else(|| {
+                                EvalError::new(format!("Argument index out of bounds: {}", idx), loc.line, loc.column)
+                            })
+                    }
+                    _ => Err(EvalError::new("No arguments available", loc.line, loc.column))
+                }
+            }
+
+            // Argument count: $@#
+            Expr::ArgCount => {
+                match &self.args {
+                    Value::List(args) => Ok(Value::Int(args.len() as i64)),
+                    _ => Ok(Value::Int(0))
+                }
             }
 
             Expr::BinOp(op, lhs, rhs) => {

@@ -152,6 +152,21 @@ pub enum Expr {
     /// Environment variable: $$PATH
     EnvVar(String),
 
+    /// Global variable reference: $>var
+    GlobalVar(String),
+
+    /// Parent scope variable reference: $<var
+    ParentVar(String),
+
+    /// All arguments: $@
+    Args,
+
+    /// Argument by index: $@.n
+    ArgIndex(u32),
+
+    /// Argument count: $@#
+    ArgCount,
+
     /// Binary operation: .+ 1 2
     BinOp(BinOp, Box<Node<Expr>>, Box<Node<Expr>>),
 

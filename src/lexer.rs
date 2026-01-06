@@ -99,7 +99,12 @@ pub enum Token {
     TypeOf,     // :@
 
     // Other Berries
-    EnvRef,     // $$
+    EnvRef,         // $$
+    GlobalRef,      // $>
+    ParentRef,      // $<
+    Args,           // $@
+    ArgIndex(u32),  // $@.n
+    ArgCount,       // $@#
 
     // Definition
     StructDef,  // ^-
@@ -791,6 +796,36 @@ impl<'a> Lexer<'a> {
             // $ berries
             '$' => match self.peek() {
                 Some('$') => { self.advance(); Token::EnvRef }
+                Some('>') => { self.advance(); Token::GlobalRef }
+                Some('<') => { self.advance(); Token::ParentRef }
+                Some('@') => {
+                    self.advance();
+                    match self.peek() {
+                        Some('#') => { self.advance(); Token::ArgCount }
+                        Some('.') => {
+                            self.advance();
+                            // Read the index number
+                            let mut num = String::new();
+                            while let Some(&c) = self.peek() {
+                                if c.is_ascii_digit() {
+                                    num.push(c);
+                                    self.advance();
+                                } else {
+                                    break;
+                                }
+                            }
+                            if num.is_empty() {
+                                return Err(LexerError {
+                                    message: "Expected number after '$@.'".to_string(),
+                                    span,
+                                });
+                            }
+                            let idx = num.parse::<u32>().unwrap_or(0);
+                            Token::ArgIndex(idx)
+                        }
+                        _ => Token::Args
+                    }
+                }
                 _ => Token::Dollar,
             },
 
@@ -1508,5 +1543,39 @@ mod tests {
             Token::Ident("n".to_string()),
             Token::Terminator,
         ]);
+    }
+
+    // === v0.2.4: Reference Extensions ===
+    #[test]
+    fn test_global_ref() {
+        assert_eq!(tokenize("$>config"), vec![
+            Token::GlobalRef,
+            Token::Ident("config".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_parent_ref() {
+        assert_eq!(tokenize("$<x"), vec![
+            Token::ParentRef,
+            Token::Ident("x".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_args() {
+        assert_eq!(tokenize("$@"), vec![Token::Args]);
+    }
+
+    #[test]
+    fn test_arg_index() {
+        assert_eq!(tokenize("$@.0"), vec![Token::ArgIndex(0)]);
+        assert_eq!(tokenize("$@.5"), vec![Token::ArgIndex(5)]);
+        assert_eq!(tokenize("$@.123"), vec![Token::ArgIndex(123)]);
+    }
+
+    #[test]
+    fn test_arg_count() {
+        assert_eq!(tokenize("$@#"), vec![Token::ArgCount]);
     }
 }
