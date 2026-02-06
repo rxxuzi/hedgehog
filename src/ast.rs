@@ -40,12 +40,12 @@ impl<T> Node<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     // Primitives
-    Int,      // @i - integer
-    Float,    // @f - floating point
-    Str,      // @s - string
-    Byte,     // @b - byte
-    Query,    // @q - boolean (query)
-    Nothing,  // @n - unit/void
+    Int,     // @i - integer
+    Float,   // @f - floating point
+    Str,     // @s - string
+    Byte,    // @b - byte
+    Query,   // @q - boolean (query)
+    Nothing, // @n - unit/void
 
     // Generics
     List(Box<Type>),              // []T
@@ -54,7 +54,7 @@ pub enum Type {
     Channel(Box<Type>),           // @cT
 
     // Compound
-    Record(Vec<(String, Type)>),  // {field @t, ...}
+    Record(Vec<(String, Type)>), // {field @t, ...}
     Tuple(Vec<Type>),
     Func(Vec<Type>, Box<Type>),
 
@@ -79,31 +79,31 @@ pub enum Literal {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {
     // Arithmetic
-    Add,    // .+
-    Sub,    // .-
-    Mul,    // .*
-    Div,    // ./
-    Mod,    // .%
-    Pow,    // .^
+    Add, // .+
+    Sub, // .-
+    Mul, // .*
+    Div, // ./
+    Mod, // .%
+    Pow, // .^
 
     // Comparison
-    Eq,     // .=
-    Neq,    // .~
-    Lt,     // .<
-    Gt,     // .>
-    Lte,    // .<=
-    Gte,    // .>=
+    Eq,  // .=
+    Neq, // .~
+    Lt,  // .<
+    Gt,  // .>
+    Lte, // .<=
+    Gte, // .>=
 
     // Logical
-    And,    // .&
-    Or,     // .|
+    And, // .&
+    Or,  // .|
 }
 
 /// Unary operators
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnaryOp {
-    Not,    // .!
-    Neg,    // -
+    Not, // .!
+    Neg, // -
 }
 
 /// Pattern for pattern matching
@@ -119,7 +119,7 @@ pub enum Pattern {
     Var(String),
 
     /// List: [h t...]
-    List(Vec<Pattern>, Option<String>),  // elements, rest
+    List(Vec<Pattern>, Option<String>), // elements, rest
 
     /// Record: {x y}
     Record(Vec<(String, Option<Pattern>)>),
@@ -231,7 +231,13 @@ pub enum Expr {
     Filter(Box<Node<Expr>>, String, Box<Node<Expr>>),
 
     /// Fold: %/ list init [acc x] expr
-    Fold(Box<Node<Expr>>, Box<Node<Expr>>, String, String, Box<Node<Expr>>),
+    Fold(
+        Box<Node<Expr>>,
+        Box<Node<Expr>>,
+        String,
+        String,
+        Box<Node<Expr>>,
+    ),
 
     /// Times: %~ n [i] expr
     Times(Box<Node<Expr>>, String, Box<Node<Expr>>),
@@ -251,8 +257,11 @@ pub enum Expr {
     /// Background: &! expr
     Background(Box<Node<Expr>>),
 
-    /// Command execution: !! `cmd` (exactly 1 child: command string)
+    /// Command execution: !! `cmd` → {out, err, code}
     Exec(String),
+
+    /// Command output only: !< `cmd` → @s (stdout)
+    ExecOut(String),
 
     /// Command interpolation: `cmd`
     CmdInterp(String),
@@ -424,7 +433,9 @@ impl fmt::Display for Expr {
             Expr::List(items) => {
                 write!(f, "[")?;
                 for (i, item) in items.iter().enumerate() {
-                    if i > 0 { write!(f, " ")?; }
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
                     write!(f, "{}", item.node)?;
                 }
                 write!(f, "]")

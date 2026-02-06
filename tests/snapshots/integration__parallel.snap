@@ -1,0 +1,17 @@
+---
+source: tests/integration.rs
+assertion_line: 127
+expression: stdout
+---
+Squared:
+[1 4 9 16 25]
+Join results:
+[30 12 50]
+Scaled by 10:
+[10 20 30]
+Select:
+from ch1
+Broadcast:
+999
+999
+999

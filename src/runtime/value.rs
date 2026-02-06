@@ -68,7 +68,9 @@ impl fmt::Display for Value {
             Value::List(items) => {
                 write!(f, "[")?;
                 for (i, item) in items.iter().enumerate() {
-                    if i > 0 { write!(f, " ")?; }
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
                     write!(f, "{}", item)?;
                 }
                 write!(f, "]")
@@ -76,7 +78,9 @@ impl fmt::Display for Value {
             Value::Record(fields) => {
                 write!(f, "{{")?;
                 for (i, (k, v)) in fields.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}: {}", k, v)?;
                 }
                 write!(f, "}}")
@@ -125,7 +129,9 @@ impl From<Value> for SendableValue {
             Value::String(s) => SendableValue::String(s),
             Value::Bool(b) => SendableValue::Bool(b),
             Value::List(items) => SendableValue::List(items.into_iter().map(Into::into).collect()),
-            Value::Record(fields) => SendableValue::Record(fields.into_iter().map(|(k, v)| (k, v.into())).collect()),
+            Value::Record(fields) => {
+                SendableValue::Record(fields.into_iter().map(|(k, v)| (k, v.into())).collect())
+            }
             Value::Tuple(items) => SendableValue::List(items.into_iter().map(Into::into).collect()),
             Value::Some(v) => SendableValue::Some(Box::new((*v).into())),
             Value::None => SendableValue::None,
@@ -147,7 +153,9 @@ impl From<SendableValue> for Value {
             SendableValue::String(s) => Value::String(s),
             SendableValue::Bool(b) => Value::Bool(b),
             SendableValue::List(items) => Value::List(items.into_iter().map(Into::into).collect()),
-            SendableValue::Record(fields) => Value::Record(fields.into_iter().map(|(k, v)| (k, v.into())).collect()),
+            SendableValue::Record(fields) => {
+                Value::Record(fields.into_iter().map(|(k, v)| (k, v.into())).collect())
+            }
             SendableValue::Some(v) => Value::Some(Box::new((*v).into())),
             SendableValue::None => Value::None,
             SendableValue::Ok(v) => Value::Ok(Box::new((*v).into())),
@@ -167,7 +175,11 @@ pub struct EvalError {
 
 impl fmt::Display for EvalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error at {}:{}: {}", self.line, self.column, self.message)
+        write!(
+            f,
+            "Error at {}:{}: {}",
+            self.line, self.column, self.message
+        )
     }
 }
 

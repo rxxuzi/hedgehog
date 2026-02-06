@@ -7,10 +7,11 @@ pub mod builtin;
 pub mod exec;
 pub mod lexer;
 pub mod parser;
+pub mod report;
 pub mod runtime;
 
 // Re-export for public API
-pub use runtime::{Value, EvalError, Evaluator, Env, FuncDef};
+pub use runtime::{Env, EvalError, Evaluator, FuncDef, Value};
 
 use parser::Parser;
 
@@ -67,11 +68,11 @@ pub fn check_syntax(code: &str) -> Result<()> {
 
 /// Internal: Run code and capture stdout/stderr
 fn run_code_with_capture(code: &str, args: Vec<String>) -> Result<Output> {
-    let program = Parser::parse_source(code)
-        .map_err(|e| Error::Parse(e.to_string()))?;
+    let program = Parser::parse_source(code).map_err(|e| Error::Parse(e.to_string()))?;
 
     let mut evaluator = Evaluator::with_args(args);
-    evaluator.eval_program(&program)
+    evaluator
+        .eval_program(&program)
         .map_err(|e| Error::Eval(e.to_string()))?;
 
     // For now, return empty output since we don't capture stdout yet
@@ -81,11 +82,11 @@ fn run_code_with_capture(code: &str, args: Vec<String>) -> Result<Output> {
 
 /// Run code without capturing output (for CLI use)
 pub fn run_code_direct(code: &str, args: Vec<String>) -> Result<()> {
-    let program = Parser::parse_source(code)
-        .map_err(|e| Error::Parse(e.to_string()))?;
+    let program = Parser::parse_source(code).map_err(|e| Error::Parse(e.to_string()))?;
 
     let mut evaluator = Evaluator::with_args(args);
-    evaluator.eval_program(&program)
+    evaluator
+        .eval_program(&program)
         .map_err(|e| Error::Eval(e.to_string()))?;
 
     Ok(())

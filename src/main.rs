@@ -1,12 +1,57 @@
 //! Hedgehog - A keyword-less shell scripting language
 
-use hedgehog::runtime::{Evaluator, Value};
-use hedgehog::parser::Parser;
+use hedgehog::parser::{ParseError, Parser};
+use hedgehog::report::{codes, get_source_line, Diagnostic};
+use hedgehog::runtime::{EvalError, Evaluator, Value};
 use std::env as std_env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Report a parse error with source context
+fn report_parse_error(error: &ParseError, source: &str, file: &str) {
+    let source_line = get_source_line(source, error.line);
+
+    let mut diag = Diagnostic::error(&error.message)
+        .with_code(codes::UNEXPECTED_TOKEN)
+        .at(file, error.line, error.column);
+
+    if let Some(line) = source_line {
+        diag = diag.with_source(line).with_length(1);
+    }
+
+    diag.emit();
+}
+
+/// Report an eval error with source context
+fn report_eval_error(error: &EvalError, source: &str, file: &str) {
+    let source_line = get_source_line(source, error.line);
+
+    // Determine error code based on message
+    let code = if error.message.contains("undefined") {
+        codes::UNDEFINED_VARIABLE
+    } else if error.message.contains("type") || error.message.contains("expected") {
+        codes::TYPE_MISMATCH
+    } else if error.message.contains("division by zero") {
+        codes::DIVISION_BY_ZERO
+    } else if error.message.contains("index") {
+        codes::INDEX_OUT_OF_BOUNDS
+    } else {
+        "E0000"
+    };
+
+    let mut diag =
+        Diagnostic::error(&error.message)
+            .with_code(code)
+            .at(file, error.line, error.column);
+
+    if let Some(line) = source_line {
+        diag = diag.with_source(line).with_length(1);
+    }
+
+    diag.emit();
+}
 
 fn main() {
     let args: Vec<String> = std_env::args().collect();
@@ -131,17 +176,15 @@ fn repl_with_evaluator(mut evaluator: Evaluator) {
                 }
 
                 match Parser::parse_source(line) {
-                    Ok(program) => {
-                        match evaluator.eval_program(&program) {
-                            Ok(value) => {
-                                if value != Value::Unit {
-                                    println!("{}", value);
-                                }
+                    Ok(program) => match evaluator.eval_program(&program) {
+                        Ok(value) => {
+                            if value != Value::Unit {
+                                println!("{}", value);
                             }
-                            Err(e) => eprintln!("Error: {}", e),
                         }
-                    }
-                    Err(e) => eprintln!("SyntaxError: {}", e),
+                        Err(e) => report_eval_error(&e, line, "<repl>"),
+                    },
+                    Err(e) => report_parse_error(&e, line, "<repl>"),
                 }
             }
             Err(e) => {
@@ -154,9 +197,9 @@ fn repl_with_evaluator(mut evaluator: Evaluator) {
 
 fn run_file(path: &str, args: Vec<String>) {
     match fs::read_to_string(path) {
-        Ok(content) => run_code(&content, args),
+        Ok(content) => run_code_with_file(&content, args, path),
         Err(e) => {
-            eprintln!("hog: cannot open '{}': {}", path, e);
+            Diagnostic::error(format!("cannot open '{}': {}", path, e)).emit();
             std::process::exit(1);
         }
     }
@@ -164,40 +207,42 @@ fn run_file(path: &str, args: Vec<String>) {
 
 fn run_file_interactive(path: &str, args: Vec<String>) -> Option<Evaluator> {
     match fs::read_to_string(path) {
-        Ok(content) => {
-            match Parser::parse_source(&content) {
-                Ok(program) => {
-                    let mut evaluator = Evaluator::with_args(args);
-                    if let Err(e) = evaluator.eval_program(&program) {
-                        eprintln!("Error: {}", e);
-                        std::process::exit(1);
-                    }
-                    Some(evaluator)
-                }
-                Err(e) => {
-                    eprintln!("SyntaxError: {}", e);
+        Ok(content) => match Parser::parse_source(&content) {
+            Ok(program) => {
+                let mut evaluator = Evaluator::with_args(args);
+                if let Err(e) = evaluator.eval_program(&program) {
+                    report_eval_error(&e, &content, path);
                     std::process::exit(1);
                 }
+                Some(evaluator)
             }
-        }
+            Err(e) => {
+                report_parse_error(&e, &content, path);
+                std::process::exit(1);
+            }
+        },
         Err(e) => {
-            eprintln!("hog: cannot open '{}': {}", path, e);
+            Diagnostic::error(format!("cannot open '{}': {}", path, e)).emit();
             std::process::exit(1);
         }
     }
 }
 
 fn run_code(code: &str, args: Vec<String>) {
+    run_code_with_file(code, args, "<stdin>");
+}
+
+fn run_code_with_file(code: &str, args: Vec<String>, file: &str) {
     match Parser::parse_source(code) {
         Ok(program) => {
             let mut evaluator = Evaluator::with_args(args);
             if let Err(e) = evaluator.eval_program(&program) {
-                eprintln!("Error: {}", e);
+                report_eval_error(&e, code, file);
                 std::process::exit(1);
             }
         }
         Err(e) => {
-            eprintln!("SyntaxError: {}", e);
+            report_parse_error(&e, code, file);
             std::process::exit(1);
         }
     }
@@ -205,19 +250,17 @@ fn run_code(code: &str, args: Vec<String>) {
 
 fn check_file(path: &str) {
     match fs::read_to_string(path) {
-        Ok(content) => {
-            match Parser::parse_source(&content) {
-                Ok(_) => {
-                    println!("{}: OK", path);
-                }
-                Err(e) => {
-                    eprintln!("SyntaxError: {}", e);
-                    std::process::exit(1);
-                }
+        Ok(content) => match Parser::parse_source(&content) {
+            Ok(_) => {
+                println!("{}: OK", path);
             }
-        }
+            Err(e) => {
+                report_parse_error(&e, &content, path);
+                std::process::exit(1);
+            }
+        },
         Err(e) => {
-            eprintln!("hog: cannot open '{}': {}", path, e);
+            Diagnostic::error(format!("cannot open '{}': {}", path, e)).emit();
             std::process::exit(1);
         }
     }

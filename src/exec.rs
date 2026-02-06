@@ -21,8 +21,7 @@ pub fn exec_command(args: &[&str]) -> Result<String, String> {
         .map_err(|e| format!("Failed to execute '{}': {}", cmd, e))?;
 
     if output.status.success() {
-        String::from_utf8(output.stdout)
-            .map_err(|e| format!("Invalid UTF-8 output: {}", e))
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(format!("Command '{}' failed: {}", cmd, stderr.trim()))
@@ -49,6 +48,39 @@ pub fn exec_shell(cmd: &str) -> Result<String, String> {
     }
 }
 
+/// Command execution result with stdout, stderr, and exit code
+pub struct ExecResult {
+    pub out: String,
+    pub err: String,
+    pub code: i32,
+}
+
+/// Execute a shell command and return full result (stdout, stderr, code)
+pub fn exec_shell_full(cmd: &str) -> ExecResult {
+    #[cfg(windows)]
+    let args = ["cmd", "/c", cmd];
+    #[cfg(not(windows))]
+    let args = ["sh", "-c", cmd];
+
+    match Command::new(args[0])
+        .args(&args[1..])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+    {
+        Ok(output) => ExecResult {
+            out: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+            err: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            code: output.status.code().unwrap_or(-1),
+        },
+        Err(e) => ExecResult {
+            out: String::new(),
+            err: format!("Failed to execute: {}", e),
+            code: -1,
+        },
+    }
+}
+
 /// Execute a command and stream output in real-time
 #[allow(dead_code)]
 pub fn exec_command_streaming(args: &[&str]) -> Result<i32, String> {
@@ -66,7 +98,8 @@ pub fn exec_command_streaming(args: &[&str]) -> Result<i32, String> {
         .spawn()
         .map_err(|e| format!("Failed to execute '{}': {}", cmd, e))?;
 
-    let status = child.wait()
+    let status = child
+        .wait()
         .map_err(|e| format!("Failed to wait for '{}': {}", cmd, e))?;
 
     Ok(status.code().unwrap_or(-1))
@@ -94,16 +127,17 @@ pub fn exec_with_stdin(args: &[&str], input: &str) -> Result<String, String> {
 
     // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(input.as_bytes())
+        stdin
+            .write_all(input.as_bytes())
             .map_err(|e| format!("Failed to write to stdin: {}", e))?;
     }
 
-    let output = child.wait_with_output()
+    let output = child
+        .wait_with_output()
         .map_err(|e| format!("Failed to read output: {}", e))?;
 
     if output.status.success() {
-        String::from_utf8(output.stdout)
-            .map_err(|e| format!("Invalid UTF-8 output: {}", e))
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(format!("Command '{}' failed: {}", cmd, stderr.trim()))
@@ -160,8 +194,8 @@ pub fn set_env(name: &str, value: &str) {
 /// Expand glob pattern
 #[allow(dead_code)]
 pub fn glob_expand(pattern: &str) -> Result<Vec<String>, String> {
-    let entries = glob::glob(pattern)
-        .map_err(|e| format!("Invalid glob pattern '{}': {}", pattern, e))?;
+    let entries =
+        glob::glob(pattern).map_err(|e| format!("Invalid glob pattern '{}': {}", pattern, e))?;
 
     let mut results = Vec::new();
     for entry in entries {
@@ -177,15 +211,13 @@ pub fn glob_expand(pattern: &str) -> Result<Vec<String>, String> {
 /// Read file contents
 #[allow(dead_code)]
 pub fn read_file(path: &str) -> Result<String, String> {
-    std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read '{}': {}", path, e))
+    std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path, e))
 }
 
 /// Write file contents
 #[allow(dead_code)]
 pub fn write_file(path: &str, content: &str) -> Result<(), String> {
-    std::fs::write(path, content)
-        .map_err(|e| format!("Failed to write '{}': {}", path, e))
+    std::fs::write(path, content).map_err(|e| format!("Failed to write '{}': {}", path, e))
 }
 
 /// Append to file

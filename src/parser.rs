@@ -15,7 +15,11 @@ pub struct ParseError {
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Parse error at {}:{}: {}", self.line, self.column, self.message)
+        write!(
+            f,
+            "Parse error at {}:{}: {}",
+            self.line, self.column, self.message
+        )
     }
 }
 
@@ -43,9 +47,9 @@ impl Parser {
     /// Parse from source code
     pub fn parse_source(source: &str) -> Result<Program, ParseError> {
         let mut lexer = Lexer::new(source);
-        let tokens = lexer.tokenize().map_err(|e| {
-            ParseError::new(e.message, e.span.line, e.span.column)
-        })?;
+        let tokens = lexer
+            .tokenize()
+            .map_err(|e| ParseError::new(e.message, e.span.line, e.span.column))?;
 
         let mut parser = Parser::new(tokens);
         parser.parse_program()
@@ -53,14 +57,16 @@ impl Parser {
 
     /// Get current token (cloned to avoid borrow issues)
     fn current(&self) -> Token {
-        self.tokens.get(self.pos)
+        self.tokens
+            .get(self.pos)
             .map(|t| t.token.clone())
             .unwrap_or(Token::Eof)
     }
 
     /// Get current span
     fn current_span(&self) -> Loc {
-        self.tokens.get(self.pos)
+        self.tokens
+            .get(self.pos)
             .map(|t| Loc::new(t.span.line, t.span.column))
             .unwrap_or(Loc::new(0, 0))
     }
@@ -86,7 +92,8 @@ impl Parser {
             let loc = self.current_span();
             Err(ParseError::new(
                 format!("Expected {:?}, got {:?}", expected, self.current()),
-                loc.line, loc.column
+                loc.line,
+                loc.column,
             ))
         }
     }
@@ -164,7 +171,10 @@ impl Parser {
                 let typed_params = self.parse_typed_param_list()?;
                 let ret_type = self.parse_type()?;
                 let body = self.parse_expr()?;
-                Ok(Node::new(Stmt::TypedFuncDef(name, typed_params, ret_type, body), loc))
+                Ok(Node::new(
+                    Stmt::TypedFuncDef(name, typed_params, ret_type, body),
+                    loc,
+                ))
             }
 
             // Output: ~> expr
@@ -226,7 +236,9 @@ impl Parser {
                     self.skip_newlines();
                     while !self.check(&Token::RBrace) && !self.check(&Token::Eof) {
                         self.skip_newlines();
-                        if self.check(&Token::RBrace) { break; }
+                        if self.check(&Token::RBrace) {
+                            break;
+                        }
 
                         let field_name = self.parse_ident()?;
                         self.expect(&Token::Colon)?;
@@ -288,7 +300,7 @@ impl Parser {
 
     /// Parse an expression
     fn parse_expr(&mut self) -> Result<Node<Expr>, ParseError> {
-        self.skip_newlines();  // Allow multi-line expressions
+        self.skip_newlines(); // Allow multi-line expressions
         self.parse_primary_expr()
     }
 
@@ -341,11 +353,17 @@ impl Parser {
                 self.advance();
                 let ty = self.parse_type_from_name(&name, loc)?;
                 match ty {
-                    Type::Channel(inner) => Ok(Node::new(Expr::MakeChan(Type::Channel(inner)), loc)),
+                    Type::Channel(inner) => {
+                        Ok(Node::new(Expr::MakeChan(Type::Channel(inner)), loc))
+                    }
                     _ => Err(ParseError::new(
-                        format!("Type @{} cannot be used as expression (only channel types)", name),
-                        loc.line, loc.column
-                    ))
+                        format!(
+                            "Type @{} cannot be used as expression (only channel types)",
+                            name
+                        ),
+                        loc.line,
+                        loc.column,
+                    )),
                 }
             }
 
@@ -417,7 +435,10 @@ impl Parser {
             Token::Not => {
                 self.advance();
                 let operand = self.parse_expr()?;
-                Ok(Node::new(Expr::UnaryOp(UnaryOp::Not, Box::new(operand)), loc))
+                Ok(Node::new(
+                    Expr::UnaryOp(UnaryOp::Not, Box::new(operand)),
+                    loc,
+                ))
             }
 
             // Conditional: ?: cond then else
@@ -468,8 +489,11 @@ impl Parser {
                 Ok(Node::new(Expr::Background(Box::new(expr)), loc))
             }
 
-            // Command execution: !! cmd args
+            // Command execution: !! cmd → {out, err, code}
             Token::Exec => self.parse_exec(),
+
+            // Command output only: !< cmd → @s
+            Token::ExecOut => self.parse_exec_out(),
 
             // Stdin: <~ (0 children)
             Token::Stdin => {
@@ -528,7 +552,10 @@ impl Parser {
                 self.advance();
                 let channel = self.parse_expr()?;
                 let value = self.parse_expr()?;
-                Ok(Node::new(Expr::ChanSend(Box::new(channel), Box::new(value)), loc))
+                Ok(Node::new(
+                    Expr::ChanSend(Box::new(channel), Box::new(value)),
+                    loc,
+                ))
             }
 
             // Pipeline: :: expr ops... == (delimited by ==)
@@ -566,7 +593,10 @@ impl Parser {
                 self.advance();
                 let expr = self.parse_expr()?;
                 let path = self.parse_expr()?;
-                Ok(Node::new(Expr::NestAccess(Box::new(expr), Box::new(path)), loc))
+                Ok(Node::new(
+                    Expr::NestAccess(Box::new(expr), Box::new(path)),
+                    loc,
+                ))
             }
 
             // Let-in: ;= name value body (3 children)
@@ -575,7 +605,10 @@ impl Parser {
                 let name = self.parse_ident()?;
                 let value = self.parse_expr()?;
                 let body = self.parse_expr()?;
-                Ok(Node::new(Expr::LetIn(name, Box::new(value), Box::new(body)), loc))
+                Ok(Node::new(
+                    Expr::LetIn(name, Box::new(value), Box::new(body)),
+                    loc,
+                ))
             }
 
             // Command check: !? "cmd" (1 child)
@@ -617,7 +650,10 @@ impl Parser {
                 self.advance();
                 let channels = self.parse_expr()?;
                 let message = self.parse_expr()?;
-                Ok(Node::new(Expr::Broadcast(Box::new(channels), Box::new(message)), loc))
+                Ok(Node::new(
+                    Expr::Broadcast(Box::new(channels), Box::new(message)),
+                    loc,
+                ))
             }
 
             // Lambda: |> [args] body
@@ -634,7 +670,10 @@ impl Parser {
                 let typed_params = self.parse_typed_param_list()?;
                 let ret_type = self.parse_type()?;
                 let body = self.parse_expr()?;
-                Ok(Node::new(Expr::TypedLambda(typed_params, ret_type, Box::new(body)), loc))
+                Ok(Node::new(
+                    Expr::TypedLambda(typed_params, ret_type, Box::new(body)),
+                    loc,
+                ))
             }
 
             // List: [...]
@@ -672,12 +711,11 @@ impl Parser {
                 Ok(Node::new(Expr::Block(vec![stmt]), loc))
             }
 
-            _ => {
-                Err(ParseError::new(
-                    format!("Unexpected token: {:?}", self.current()),
-                    loc.line, loc.column
-                ))
-            }
+            _ => Err(ParseError::new(
+                format!("Unexpected token: {:?}", self.current()),
+                loc.line,
+                loc.column,
+            )),
         }
     }
 
@@ -687,7 +725,10 @@ impl Parser {
         self.advance();
         let lhs = self.parse_expr()?;
         let rhs = self.parse_expr()?;
-        Ok(Node::new(Expr::BinOp(op, Box::new(lhs), Box::new(rhs)), loc))
+        Ok(Node::new(
+            Expr::BinOp(op, Box::new(lhs), Box::new(rhs)),
+            loc,
+        ))
     }
 
     /// Parse conditional: ?: cond then else
@@ -695,7 +736,7 @@ impl Parser {
         let loc = self.current_span();
         self.advance(); // consume ?:
 
-        self.skip_newlines();  // Allow newline after ?:
+        self.skip_newlines(); // Allow newline after ?:
 
         // Check for multi-way cond: ?: | cond1 -> expr1 | cond2 -> expr2
         if self.check(&Token::Bar) {
@@ -703,17 +744,14 @@ impl Parser {
 
             while self.check(&Token::Bar) {
                 self.advance(); // consume |
-                self.skip_newlines();  // Allow newline after |
+                self.skip_newlines(); // Allow newline after |
 
                 // Check for wildcard
                 if self.check(&Token::Underscore) {
                     self.advance();
                     self.expect(&Token::Arrow)?;
                     let body = self.parse_expr()?;
-                    branches.push((
-                        Node::new(Expr::Lit(Literal::Bool(true)), loc),
-                        body
-                    ));
+                    branches.push((Node::new(Expr::Lit(Literal::Bool(true)), loc), body));
                     break;
                 }
 
@@ -734,11 +772,10 @@ impl Parser {
             self.skip_newlines();
             let else_expr = self.parse_expr()?;
 
-            Ok(Node::new(Expr::Cond(
-                Box::new(cond),
-                Box::new(then_expr),
-                Box::new(else_expr)
-            ), loc))
+            Ok(Node::new(
+                Expr::Cond(Box::new(cond), Box::new(then_expr), Box::new(else_expr)),
+                loc,
+            ))
         }
     }
 
@@ -754,7 +791,7 @@ impl Parser {
 
         while self.check(&Token::Bar) {
             self.advance(); // consume |
-            self.skip_newlines();  // Allow newline after |
+            self.skip_newlines(); // Allow newline after |
             let pattern = self.parse_pattern()?;
             self.skip_newlines();
             self.expect(&Token::Arrow)?;
@@ -849,21 +886,18 @@ impl Parser {
                         self.expect(&Token::RParen)?;
                         Ok(Pattern::Err(Box::new(inner)))
                     }
-                    _ => {
-                        Err(ParseError::new("Invalid pattern", loc.line, loc.column))
-                    }
+                    _ => Err(ParseError::new("Invalid pattern", loc.line, loc.column)),
                 }
             }
             Token::Ident(name) => {
                 self.advance();
                 Ok(Pattern::Var(name))
             }
-            _ => {
-                Err(ParseError::new(
-                    format!("Invalid pattern: {:?}", self.current()),
-                    loc.line, loc.column
-                ))
-            }
+            _ => Err(ParseError::new(
+                format!("Invalid pattern: {:?}", self.current()),
+                loc.line,
+                loc.column,
+            )),
         }
     }
 
@@ -883,7 +917,10 @@ impl Parser {
 
         let handler = self.parse_expr()?;
 
-        Ok(Node::new(Expr::Trap(Box::new(body), err_name, Box::new(handler)), loc))
+        Ok(Node::new(
+            Expr::Trap(Box::new(body), err_name, Box::new(handler)),
+            loc,
+        ))
     }
 
     /// Parse map: %> list [x] body
@@ -902,7 +939,10 @@ impl Parser {
 
         let body = self.parse_expr()?;
 
-        Ok(Node::new(Expr::Map(Box::new(list), var, Box::new(body)), loc))
+        Ok(Node::new(
+            Expr::Map(Box::new(list), var, Box::new(body)),
+            loc,
+        ))
     }
 
     /// Parse filter: %< list [x] body
@@ -921,7 +961,10 @@ impl Parser {
 
         let body = self.parse_expr()?;
 
-        Ok(Node::new(Expr::Filter(Box::new(list), var, Box::new(body)), loc))
+        Ok(Node::new(
+            Expr::Filter(Box::new(list), var, Box::new(body)),
+            loc,
+        ))
     }
 
     /// Parse fold: %/ list init [acc x] body
@@ -943,13 +986,10 @@ impl Parser {
 
         let body = self.parse_expr()?;
 
-        Ok(Node::new(Expr::Fold(
-            Box::new(list),
-            Box::new(init),
-            acc,
-            var,
-            Box::new(body)
-        ), loc))
+        Ok(Node::new(
+            Expr::Fold(Box::new(list), Box::new(init), acc, var, Box::new(body)),
+            loc,
+        ))
     }
 
     /// Parse times: %~ n [i] body
@@ -968,7 +1008,10 @@ impl Parser {
 
         let body = self.parse_expr()?;
 
-        Ok(Node::new(Expr::Times(Box::new(n), var, Box::new(body)), loc))
+        Ok(Node::new(
+            Expr::Times(Box::new(n), var, Box::new(body)),
+            loc,
+        ))
     }
 
     /// Parse range: %.. start end [step]
@@ -1000,7 +1043,10 @@ impl Parser {
 
         let body = self.parse_expr()?;
 
-        Ok(Node::new(Expr::ParEach(Box::new(list), var, Box::new(body)), loc))
+        Ok(Node::new(
+            Expr::ParEach(Box::new(list), var, Box::new(body)),
+            loc,
+        ))
     }
 
     /// Parse join: &= tasks
@@ -1047,12 +1093,40 @@ impl Parser {
             _ => {
                 return Err(ParseError::new(
                     "!! requires a command string in backticks, e.g., !! `echo hello`",
-                    loc.line, loc.column
+                    loc.line,
+                    loc.column,
                 ));
             }
         };
 
         Ok(Node::new(Expr::Exec(cmd), loc))
+    }
+
+    /// Parse exec output: !< command-string (exactly 1 child) → @s
+    fn parse_exec_out(&mut self) -> Result<Node<Expr>, ParseError> {
+        let loc = self.current_span();
+        self.advance(); // consume !<
+
+        // !< takes exactly 1 child: a command string in backticks
+        let cmd = match self.current() {
+            Token::CommandString(s) => {
+                self.advance();
+                s
+            }
+            Token::String(s) => {
+                self.advance();
+                s
+            }
+            _ => {
+                return Err(ParseError::new(
+                    "!< requires a command string in backticks, e.g., !< `echo hello`",
+                    loc.line,
+                    loc.column,
+                ));
+            }
+        };
+
+        Ok(Node::new(Expr::ExecOut(cmd), loc))
     }
 
     /// Parse list: [...]
@@ -1064,7 +1138,9 @@ impl Parser {
 
         while !self.check(&Token::RBracket) && !self.check(&Token::Eof) {
             self.skip_newlines();
-            if self.check(&Token::RBracket) { break; }
+            if self.check(&Token::RBracket) {
+                break;
+            }
 
             items.push(self.parse_expr()?);
 
@@ -1096,7 +1172,8 @@ impl Parser {
         // Record starts with: identifier :
         let is_record = if let Token::Ident(_) = self.current() {
             // Look ahead for colon
-            self.tokens.get(self.pos + 1)
+            self.tokens
+                .get(self.pos + 1)
                 .map(|t| t.token == Token::Colon)
                 .unwrap_or(false)
         } else {
@@ -1108,7 +1185,9 @@ impl Parser {
 
             while !self.check(&Token::RBrace) && !self.check(&Token::Eof) {
                 self.skip_newlines();
-                if self.check(&Token::RBrace) { break; }
+                if self.check(&Token::RBrace) {
+                    break;
+                }
 
                 let key = self.parse_ident()?;
                 self.expect(&Token::Colon)?;
@@ -1131,7 +1210,9 @@ impl Parser {
 
             while !self.check(&Token::RBrace) && !self.check(&Token::Eof) {
                 self.skip_newlines();
-                if self.check(&Token::RBrace) { break; }
+                if self.check(&Token::RBrace) {
+                    break;
+                }
 
                 stmts.push(self.parse_stmt()?);
 
@@ -1211,8 +1292,9 @@ impl Parser {
             }
             _ => Err(ParseError::new(
                 format!("Expected identifier, got {:?}", self.current()),
-                loc.line, loc.column
-            ))
+                loc.line,
+                loc.column,
+            )),
         }
     }
 
@@ -1224,7 +1306,9 @@ impl Parser {
         let mut params = Vec::new();
         while !self.check(&Token::RBracket) && !self.check(&Token::Eof) {
             self.skip_newlines();
-            if self.check(&Token::RBracket) { break; }
+            if self.check(&Token::RBracket) {
+                break;
+            }
 
             // Check for rest parameter: *name
             if self.check(&Token::Star) {
@@ -1246,7 +1330,9 @@ impl Parser {
         let mut params = Vec::new();
         while !self.check(&Token::RBracket) && !self.check(&Token::Eof) {
             self.skip_newlines();
-            if self.check(&Token::RBracket) { break; }
+            if self.check(&Token::RBracket) {
+                break;
+            }
 
             let name = self.parse_ident()?;
             let ty = self.parse_type()?;
@@ -1277,10 +1363,10 @@ impl Parser {
                     "b" | "byte" => Ok(Type::Byte),
                     "q" | "query" | "bool" => Ok(Type::Query),
                     "n" | "nothing" | "unit" => Ok(Type::Nothing),
-                    _ => Ok(Type::Named(name))
+                    _ => Ok(Type::Named(name)),
                 }
             }
-            _ => Err(ParseError::new("Expected type", loc.line, loc.column))
+            _ => Err(ParseError::new("Expected type", loc.line, loc.column)),
         }
     }
 
@@ -1332,7 +1418,7 @@ impl Parser {
             "b" | "@b" => Ok(Type::Byte),
             "q" | "@q" => Ok(Type::Query),
             "n" | "@n" => Ok(Type::Nothing),
-            _ => Ok(Type::Named(name.to_string()))
+            _ => Ok(Type::Named(name.to_string())),
         }
     }
 
@@ -1415,16 +1501,23 @@ impl Parser {
                 self.advance();
                 Ok(s)
             }
-            _ => Err(ParseError::new("Expected string or identifier", loc.line, loc.column))
+            _ => Err(ParseError::new(
+                "Expected string or identifier",
+                loc.line,
+                loc.column,
+            )),
         }
     }
 
     /// Convert lexer StringPart to AST InterpPart
     fn convert_interp_parts(&self, parts: Vec<StringPart>) -> Vec<InterpPart> {
-        parts.into_iter().map(|part| match part {
-            StringPart::Lit(s) => InterpPart::Lit(s),
-            StringPart::Var(name) => InterpPart::Var(name),
-        }).collect()
+        parts
+            .into_iter()
+            .map(|part| match part {
+                StringPart::Lit(s) => InterpPart::Lit(s),
+                StringPart::Var(name) => InterpPart::Var(name),
+            })
+            .collect()
     }
 
     /// Parse expression list until terminator
@@ -1433,7 +1526,9 @@ impl Parser {
 
         while !self.check(terminator) && !self.check(&Token::Eof) {
             self.skip_newlines();
-            if self.check(terminator) { break; }
+            if self.check(terminator) {
+                break;
+            }
 
             exprs.push(self.parse_expr()?);
 
@@ -1699,12 +1794,10 @@ mod tests {
     fn test_parse_nested_arithmetic() {
         let expr = parse_expr(".* (.+ 1 2) 3");
         match expr {
-            Expr::BinOp(BinOp::Mul, lhs, _) => {
-                match &lhs.node {
-                    Expr::BinOp(BinOp::Add, _, _) => {}
-                    _ => panic!("Expected nested Add"),
-                }
-            }
+            Expr::BinOp(BinOp::Mul, lhs, _) => match &lhs.node {
+                Expr::BinOp(BinOp::Add, _, _) => {}
+                _ => panic!("Expected nested Add"),
+            },
             _ => panic!("Expected BinOp Mul"),
         }
     }

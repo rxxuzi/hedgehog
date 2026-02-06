@@ -2,8 +2,8 @@
 //!
 //! Manages variable scopes and bindings.
 
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::runtime::value::Value;
@@ -161,9 +161,14 @@ impl FuncDef {
         name: String,
         params: Vec<String>,
         body: crate::ast::Node<crate::ast::Expr>,
-        closure: Rc<RefCell<Env>>
+        closure: Rc<RefCell<Env>>,
     ) -> Self {
-        Self { name, params, body, closure }
+        Self {
+            name,
+            params,
+            body,
+            closure,
+        }
     }
 }
 
@@ -206,7 +211,7 @@ mod tests {
         parent.borrow_mut().define("x".to_string(), Value::Int(1));
 
         let mut child = Env::with_parent(parent.clone());
-        child.define("x".to_string(), Value::Int(2));  // Shadow parent's x
+        child.define("x".to_string(), Value::Int(2)); // Shadow parent's x
 
         assert_eq!(child.get("x"), Some(Value::Int(2)));
         assert_eq!(parent.borrow().get("x"), Some(Value::Int(1)));
@@ -224,7 +229,7 @@ mod tests {
     #[test]
     fn test_env_set_undefined() {
         let mut env = Env::new();
-        assert!(!env.set("x", Value::Int(1)));  // x is not defined
+        assert!(!env.set("x", Value::Int(1))); // x is not defined
     }
 
     #[test]
@@ -265,18 +270,26 @@ mod tests {
         env.define("a".to_string(), Value::Int(1));
         env.define("b".to_string(), Value::String("hello".to_string()));
         env.define("c".to_string(), Value::Bool(true));
-        env.define("d".to_string(), Value::List(vec![Value::Int(1), Value::Int(2)]));
+        env.define(
+            "d".to_string(),
+            Value::List(vec![Value::Int(1), Value::Int(2)]),
+        );
 
         assert_eq!(env.get("a"), Some(Value::Int(1)));
         assert_eq!(env.get("b"), Some(Value::String("hello".to_string())));
         assert_eq!(env.get("c"), Some(Value::Bool(true)));
-        assert_eq!(env.get("d"), Some(Value::List(vec![Value::Int(1), Value::Int(2)])));
+        assert_eq!(
+            env.get("d"),
+            Some(Value::List(vec![Value::Int(1), Value::Int(2)]))
+        );
     }
 
     #[test]
     fn test_env_deeply_nested() {
         let grandparent = Env::new().wrap();
-        grandparent.borrow_mut().define("a".to_string(), Value::Int(1));
+        grandparent
+            .borrow_mut()
+            .define("a".to_string(), Value::Int(1));
 
         let parent = Env::with_parent(grandparent.clone()).wrap();
         parent.borrow_mut().define("b".to_string(), Value::Int(2));
@@ -291,7 +304,7 @@ mod tests {
     fn test_env_redefine() {
         let mut env = Env::new();
         env.define("x".to_string(), Value::Int(1));
-        env.define("x".to_string(), Value::Int(2));  // Redefine
+        env.define("x".to_string(), Value::Int(2)); // Redefine
 
         assert_eq!(env.get("x"), Some(Value::Int(2)));
     }

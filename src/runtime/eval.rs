@@ -7,10 +7,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::ast::{BinOp, Expr, InterpPart, Literal, Loc, Node, Pattern, Program, Stmt, Type, UnaryOp};
-use crate::runtime::env::{Env, FuncDef};
-use crate::runtime::value::{Value, EvalError};
+use crate::ast::{
+    BinOp, Expr, InterpPart, Literal, Loc, Node, Pattern, Program, Stmt, Type, UnaryOp,
+};
 use crate::exec;
+use crate::runtime::env::{Env, FuncDef};
+use crate::runtime::value::{EvalError, Value};
 
 /// Evaluator
 pub struct Evaluator {
@@ -55,8 +57,14 @@ impl Evaluator {
             e.define("ok?".to_string(), Value::Builtin("ok?".to_string()));
             e.define("err?".to_string(), Value::Builtin("err?".to_string()));
             e.define("unwrap".to_string(), Value::Builtin("unwrap".to_string()));
-            e.define("unwrap-or".to_string(), Value::Builtin("unwrap-or".to_string()));
-            e.define("contains".to_string(), Value::Builtin("contains".to_string()));
+            e.define(
+                "unwrap-or".to_string(),
+                Value::Builtin("unwrap-or".to_string()),
+            );
+            e.define(
+                "contains".to_string(),
+                Value::Builtin("contains".to_string()),
+            );
             e.define("starts".to_string(), Value::Builtin("starts".to_string()));
             e.define("ends".to_string(), Value::Builtin("ends".to_string()));
             e.define("concat".to_string(), Value::Builtin("concat".to_string()));
@@ -67,11 +75,17 @@ impl Evaluator {
             e.define("max".to_string(), Value::Builtin("max".to_string()));
         }
 
-        Self { env, args: args_value }
+        Self {
+            env,
+            args: args_value,
+        }
     }
 
     pub fn with_env(env: Rc<RefCell<Env>>) -> Self {
-        Self { env, args: Value::List(vec![]) }
+        Self {
+            env,
+            args: Value::List(vec![]),
+        }
     }
 
     /// Evaluate a program
@@ -103,26 +117,21 @@ impl Evaluator {
             }
 
             Stmt::FuncDef(name, params, body) => {
-                let func = FuncDef::new(
-                    name.clone(),
-                    params.clone(),
-                    body.clone(),
-                    self.env.clone(),
-                );
-                self.env.borrow_mut().define(name.clone(), Value::Func(Arc::new(func)));
+                let func =
+                    FuncDef::new(name.clone(), params.clone(), body.clone(), self.env.clone());
+                self.env
+                    .borrow_mut()
+                    .define(name.clone(), Value::Func(Arc::new(func)));
                 Ok(Value::Unit)
             }
 
             Stmt::TypedFuncDef(name, typed_params, _ret_type, body) => {
                 // Extract parameter names from typed params
                 let params: Vec<String> = typed_params.iter().map(|(n, _)| n.clone()).collect();
-                let func = FuncDef::new(
-                    name.clone(),
-                    params,
-                    body.clone(),
-                    self.env.clone(),
-                );
-                self.env.borrow_mut().define(name.clone(), Value::Func(Arc::new(func)));
+                let func = FuncDef::new(name.clone(), params, body.clone(), self.env.clone());
+                self.env
+                    .borrow_mut()
+                    .define(name.clone(), Value::Func(Arc::new(func)));
                 Ok(Value::Unit)
             }
 
@@ -150,7 +159,11 @@ impl Evaluator {
                 let path_str = path.to_string();
                 let content_str = content.to_string();
                 std::fs::write(&path_str, &content_str).map_err(|e| {
-                    EvalError::new(format!("Failed to write file: {}", e), stmt.loc.line, stmt.loc.column)
+                    EvalError::new(
+                        format!("Failed to write file: {}", e),
+                        stmt.loc.line,
+                        stmt.loc.column,
+                    )
                 })?;
                 Ok(Value::Unit)
             }
@@ -166,10 +179,18 @@ impl Evaluator {
                     .create(true)
                     .open(&path_str)
                     .map_err(|e| {
-                        EvalError::new(format!("Failed to open file: {}", e), stmt.loc.line, stmt.loc.column)
+                        EvalError::new(
+                            format!("Failed to open file: {}", e),
+                            stmt.loc.line,
+                            stmt.loc.column,
+                        )
                     })?;
                 file.write_all(content_str.as_bytes()).map_err(|e| {
-                    EvalError::new(format!("Failed to write file: {}", e), stmt.loc.line, stmt.loc.column)
+                    EvalError::new(
+                        format!("Failed to write file: {}", e),
+                        stmt.loc.line,
+                        stmt.loc.column,
+                    )
                 })?;
                 Ok(Value::Unit)
             }
@@ -181,7 +202,11 @@ impl Evaluator {
                 // For now, treat as string write
                 let bytes_str = bytes.to_string();
                 std::fs::write(&path_str, &bytes_str).map_err(|e| {
-                    EvalError::new(format!("Failed to write file: {}", e), stmt.loc.line, stmt.loc.column)
+                    EvalError::new(
+                        format!("Failed to write file: {}", e),
+                        stmt.loc.line,
+                        stmt.loc.column,
+                    )
                 })?;
                 Ok(Value::Unit)
             }
@@ -233,7 +258,11 @@ impl Evaluator {
                         InterpPart::Lit(s) => result.push_str(s),
                         InterpPart::Var(name) => {
                             let val = self.env.borrow().get(name).ok_or_else(|| {
-                                EvalError::new(format!("Undefined variable: {}", name), loc.line, loc.column)
+                                EvalError::new(
+                                    format!("Undefined variable: {}", name),
+                                    loc.line,
+                                    loc.column,
+                                )
                             })?;
                             result.push_str(&val.to_string());
                         }
@@ -242,62 +271,69 @@ impl Evaluator {
                 Ok(Value::String(result))
             }
 
-            Expr::Var(name) => {
-                self.env.borrow().get(name).ok_or_else(|| {
-                    EvalError::new(format!("Undefined variable: {}", name), loc.line, loc.column)
-                })
-            }
+            Expr::Var(name) => self.env.borrow().get(name).ok_or_else(|| {
+                EvalError::new(
+                    format!("Undefined variable: {}", name),
+                    loc.line,
+                    loc.column,
+                )
+            }),
 
-            Expr::EnvVar(name) => {
-                self.env.borrow().get_env_var(name)
-                    .map(Value::String)
-                    .ok_or_else(|| {
-                        EvalError::new(format!("Undefined environment variable: {}", name), loc.line, loc.column)
-                    })
-            }
+            Expr::EnvVar(name) => self
+                .env
+                .borrow()
+                .get_env_var(name)
+                .map(Value::String)
+                .ok_or_else(|| {
+                    EvalError::new(
+                        format!("Undefined environment variable: {}", name),
+                        loc.line,
+                        loc.column,
+                    )
+                }),
 
             // Global variable: $>name - lookup in root scope
-            Expr::GlobalVar(name) => {
-                self.env.borrow().get_global(name)
-                    .ok_or_else(|| {
-                        EvalError::new(format!("Undefined global variable: {}", name), loc.line, loc.column)
-                    })
-            }
+            Expr::GlobalVar(name) => self.env.borrow().get_global(name).ok_or_else(|| {
+                EvalError::new(
+                    format!("Undefined global variable: {}", name),
+                    loc.line,
+                    loc.column,
+                )
+            }),
 
             // Parent scope variable: $<name - lookup in parent scope
-            Expr::ParentVar(name) => {
-                self.env.borrow().get_parent(name)
-                    .ok_or_else(|| {
-                        EvalError::new(format!("Undefined parent variable: {}", name), loc.line, loc.column)
-                    })
-            }
+            Expr::ParentVar(name) => self.env.borrow().get_parent(name).ok_or_else(|| {
+                EvalError::new(
+                    format!("Undefined parent variable: {}", name),
+                    loc.line,
+                    loc.column,
+                )
+            }),
 
             // All arguments: $@
-            Expr::Args => {
-                Ok(self.args.clone())
-            }
+            Expr::Args => Ok(self.args.clone()),
 
             // Argument by index: $@.n
-            Expr::ArgIndex(idx) => {
-                match &self.args {
-                    Value::List(args) => {
-                        args.get(*idx as usize)
-                            .cloned()
-                            .ok_or_else(|| {
-                                EvalError::new(format!("Argument index out of bounds: {}", idx), loc.line, loc.column)
-                            })
-                    }
-                    _ => Err(EvalError::new("No arguments available", loc.line, loc.column))
-                }
-            }
+            Expr::ArgIndex(idx) => match &self.args {
+                Value::List(args) => args.get(*idx as usize).cloned().ok_or_else(|| {
+                    EvalError::new(
+                        format!("Argument index out of bounds: {}", idx),
+                        loc.line,
+                        loc.column,
+                    )
+                }),
+                _ => Err(EvalError::new(
+                    "No arguments available",
+                    loc.line,
+                    loc.column,
+                )),
+            },
 
             // Argument count: $@#
-            Expr::ArgCount => {
-                match &self.args {
-                    Value::List(args) => Ok(Value::Int(args.len() as i64)),
-                    _ => Ok(Value::Int(0))
-                }
-            }
+            Expr::ArgCount => match &self.args {
+                Value::List(args) => Ok(Value::Int(args.len() as i64)),
+                _ => Ok(Value::Int(0)),
+            },
 
             Expr::BinOp(op, lhs, rhs) => {
                 let lhs_val = self.eval_expr(lhs)?;
@@ -346,12 +382,14 @@ impl Evaluator {
             Expr::Field(obj, field) => {
                 let obj_val = self.eval_expr(obj)?;
                 match obj_val {
-                    Value::Record(fields) => {
-                        fields.get(field).cloned().ok_or_else(|| {
-                            EvalError::new(format!("Unknown field: {}", field), loc.line, loc.column)
-                        })
-                    }
-                    _ => Err(EvalError::new("Cannot access field on non-record", loc.line, loc.column))
+                    Value::Record(fields) => fields.get(field).cloned().ok_or_else(|| {
+                        EvalError::new(format!("Unknown field: {}", field), loc.line, loc.column)
+                    }),
+                    _ => Err(EvalError::new(
+                        "Cannot access field on non-record",
+                        loc.line,
+                        loc.column,
+                    )),
                 }
             }
 
@@ -367,7 +405,11 @@ impl Evaluator {
                             i as usize
                         };
                         items.get(idx).cloned().ok_or_else(|| {
-                            EvalError::new(format!("Index out of bounds: {}", i), loc.line, loc.column)
+                            EvalError::new(
+                                format!("Index out of bounds: {}", i),
+                                loc.line,
+                                loc.column,
+                            )
                         })
                     }
                     (Value::String(s), Value::Int(i)) => {
@@ -376,13 +418,22 @@ impl Evaluator {
                         } else {
                             i as usize
                         };
-                        s.chars().nth(idx)
+                        s.chars()
+                            .nth(idx)
                             .map(|c| Value::String(c.to_string()))
                             .ok_or_else(|| {
-                                EvalError::new(format!("Index out of bounds: {}", i), loc.line, loc.column)
+                                EvalError::new(
+                                    format!("Index out of bounds: {}", i),
+                                    loc.line,
+                                    loc.column,
+                                )
                             })
                     }
-                    _ => Err(EvalError::new("Invalid index operation", loc.line, loc.column))
+                    _ => Err(EvalError::new(
+                        "Invalid index operation",
+                        loc.line,
+                        loc.column,
+                    )),
                 }
             }
 
@@ -459,18 +510,18 @@ impl Evaluator {
                 Ok(result)
             }
 
-            Expr::Trap(body, err_name, handler) => {
-                match self.eval_expr(body) {
-                    Ok(val) => Ok(val),
-                    Err(e) => {
-                        let new_env = Env::with_parent(self.env.clone()).wrap();
-                        new_env.borrow_mut().define(err_name.clone(), Value::String(e.message));
+            Expr::Trap(body, err_name, handler) => match self.eval_expr(body) {
+                Ok(val) => Ok(val),
+                Err(e) => {
+                    let new_env = Env::with_parent(self.env.clone()).wrap();
+                    new_env
+                        .borrow_mut()
+                        .define(err_name.clone(), Value::String(e.message));
 
-                        let mut evaluator = Evaluator::with_env(new_env);
-                        evaluator.eval_expr(handler)
-                    }
+                    let mut evaluator = Evaluator::with_env(new_env);
+                    evaluator.eval_expr(handler)
                 }
-            }
+            },
 
             Expr::Map(list_expr, var_name, body) => {
                 let list = self.eval_expr(list_expr)?;
@@ -489,7 +540,7 @@ impl Evaluator {
 
                         Ok(Value::List(results))
                     }
-                    _ => Err(EvalError::new("%> requires a list", loc.line, loc.column))
+                    _ => Err(EvalError::new("%> requires a list", loc.line, loc.column)),
                 }
             }
 
@@ -514,7 +565,7 @@ impl Evaluator {
 
                         Ok(Value::List(results))
                     }
-                    _ => Err(EvalError::new("%< requires a list", loc.line, loc.column))
+                    _ => Err(EvalError::new("%< requires a list", loc.line, loc.column)),
                 }
             }
 
@@ -537,7 +588,7 @@ impl Evaluator {
 
                         Ok(acc)
                     }
-                    _ => Err(EvalError::new("%/ requires a list", loc.line, loc.column))
+                    _ => Err(EvalError::new("%/ requires a list", loc.line, loc.column)),
                 }
             }
 
@@ -558,7 +609,11 @@ impl Evaluator {
 
                         Ok(result)
                     }
-                    _ => Err(EvalError::new("%~ requires an integer", loc.line, loc.column))
+                    _ => Err(EvalError::new(
+                        "%~ requires an integer",
+                        loc.line,
+                        loc.column,
+                    )),
                 }
             }
 
@@ -571,23 +626,34 @@ impl Evaluator {
                         let result: Vec<Value> = (s..e).map(Value::Int).collect();
                         Ok(Value::List(result))
                     }
-                    _ => Err(EvalError::new("%.. requires integers", loc.line, loc.column))
+                    _ => Err(EvalError::new(
+                        "%.. requires integers",
+                        loc.line,
+                        loc.column,
+                    )),
                 }
             }
 
             Expr::Exec(cmd) => {
-                // !! takes 1 child: command string
-                match exec::exec_shell(cmd) {
-                    Ok(output) => Ok(Value::String(output.trim().to_string())),
-                    Err(e) => Err(EvalError::new(e, loc.line, loc.column))
-                }
+                // !! returns Record {out, err, code}
+                let result = exec::exec_shell_full(cmd);
+                let mut fields = std::collections::HashMap::new();
+                fields.insert("out".to_string(), Value::String(result.out));
+                fields.insert("err".to_string(), Value::String(result.err));
+                fields.insert("code".to_string(), Value::Int(result.code as i64));
+                Ok(Value::Record(fields))
+            }
+
+            Expr::ExecOut(cmd) => {
+                // !< returns stdout only as @s
+                let result = exec::exec_shell_full(cmd);
+                Ok(Value::String(result.out))
             }
 
             Expr::CmdInterp(cmd) => {
-                match exec::exec_shell(cmd) {
-                    Ok(output) => Ok(Value::String(output.trim().to_string())),
-                    Err(e) => Err(EvalError::new(e, loc.line, loc.column))
-                }
+                // Backtick interpolation returns stdout
+                let result = exec::exec_shell_full(cmd);
+                Ok(Value::String(result.out))
             }
 
             Expr::Some(inner) => {
@@ -623,7 +689,7 @@ impl Evaluator {
                 // Get type name from the right side
                 let type_name = match &type_expr.node {
                     Expr::Var(name) => name.clone(),
-                    _ => return Err(EvalError::new("Expected type for :>", loc.line, loc.column))
+                    _ => return Err(EvalError::new("Expected type for :>", loc.line, loc.column)),
                 };
 
                 // Convert value to target type
@@ -637,34 +703,42 @@ impl Evaluator {
                         match value {
                             Value::Int(n) => Ok(Value::Int(n)),
                             Value::Float(f) => Ok(Value::Int(f as i64)),
-                            Value::String(s) => s.parse::<i64>()
-                                .map(Value::Int)
-                                .map_err(|_| EvalError::new("Cannot convert to integer", loc.line, loc.column)),
-                            _ => Err(EvalError::new("Cannot convert to integer", loc.line, loc.column))
+                            Value::String(s) => s.parse::<i64>().map(Value::Int).map_err(|_| {
+                                EvalError::new("Cannot convert to integer", loc.line, loc.column)
+                            }),
+                            _ => Err(EvalError::new(
+                                "Cannot convert to integer",
+                                loc.line,
+                                loc.column,
+                            )),
                         }
                     }
                     // Float conversion
-                    name if name.contains("F32") || name.contains("F64") => {
-                        match value {
-                            Value::Int(n) => Ok(Value::Float(n as f64)),
-                            Value::Float(f) => Ok(Value::Float(f)),
-                            Value::String(s) => s.parse::<f64>()
-                                .map(Value::Float)
-                                .map_err(|_| EvalError::new("Cannot convert to float", loc.line, loc.column)),
-                            _ => Err(EvalError::new("Cannot convert to float", loc.line, loc.column))
-                        }
-                    }
+                    name if name.contains("F32") || name.contains("F64") => match value {
+                        Value::Int(n) => Ok(Value::Float(n as f64)),
+                        Value::Float(f) => Ok(Value::Float(f)),
+                        Value::String(s) => s.parse::<f64>().map(Value::Float).map_err(|_| {
+                            EvalError::new("Cannot convert to float", loc.line, loc.column)
+                        }),
+                        _ => Err(EvalError::new(
+                            "Cannot convert to float",
+                            loc.line,
+                            loc.column,
+                        )),
+                    },
                     // Bool conversion
-                    name if name.contains("Bool") || name == "b" => {
-                        match value {
-                            Value::Bool(b) => Ok(Value::Bool(b)),
-                            Value::Int(n) => Ok(Value::Bool(n != 0)),
-                            Value::String(s) => Ok(Value::Bool(!s.is_empty())),
-                            _ => Err(EvalError::new("Cannot convert to bool", loc.line, loc.column))
-                        }
-                    }
+                    name if name.contains("Bool") || name == "b" => match value {
+                        Value::Bool(b) => Ok(Value::Bool(b)),
+                        Value::Int(n) => Ok(Value::Bool(n != 0)),
+                        Value::String(s) => Ok(Value::Bool(!s.is_empty())),
+                        _ => Err(EvalError::new(
+                            "Cannot convert to bool",
+                            loc.line,
+                            loc.column,
+                        )),
+                    },
                     // Default: return as-is
-                    _ => Ok(Value::String(value.to_string()))
+                    _ => Ok(Value::String(value.to_string())),
                 }
             }
 
@@ -708,9 +782,16 @@ impl Evaluator {
             Expr::Stdin => {
                 use std::io::{self, BufRead};
                 let stdin = io::stdin();
-                let line = stdin.lock().lines().next()
-                    .ok_or_else(|| EvalError::new("Failed to read from stdin", loc.line, loc.column))?
-                    .map_err(|e| EvalError::new(format!("IO error: {}", e), loc.line, loc.column))?;
+                let line = stdin
+                    .lock()
+                    .lines()
+                    .next()
+                    .ok_or_else(|| {
+                        EvalError::new("Failed to read from stdin", loc.line, loc.column)
+                    })?
+                    .map_err(|e| {
+                        EvalError::new(format!("IO error: {}", e), loc.line, loc.column)
+                    })?;
                 Ok(Value::String(line))
             }
 
@@ -757,9 +838,10 @@ impl Evaluator {
                     .map_err(|e| {
                         EvalError::new(format!("Failed to open file: {}", e), loc.line, loc.column)
                     })?;
-                file.write_all(content.to_string().as_bytes()).map_err(|e| {
-                    EvalError::new(format!("Failed to write file: {}", e), loc.line, loc.column)
-                })?;
+                file.write_all(content.to_string().as_bytes())
+                    .map_err(|e| {
+                        EvalError::new(format!("Failed to write file: {}", e), loc.line, loc.column)
+                    })?;
                 Ok(Value::Unit)
             }
 
@@ -780,12 +862,16 @@ impl Evaluator {
 
                 match ch {
                     Value::Channel(channel) => {
-                        channel.send(value).map_err(|e| {
-                            EvalError::new(e, loc.line, loc.column)
-                        })?;
+                        channel
+                            .send(value)
+                            .map_err(|e| EvalError::new(e, loc.line, loc.column))?;
                         Ok(Value::Unit)
                     }
-                    _ => Err(EvalError::new("-> requires a channel", loc.line, loc.column))
+                    _ => Err(EvalError::new(
+                        "-> requires a channel",
+                        loc.line,
+                        loc.column,
+                    )),
                 }
             }
 
@@ -794,12 +880,14 @@ impl Evaluator {
                 let ch = self.eval_expr(ch_expr)?;
 
                 match ch {
-                    Value::Channel(channel) => {
-                        channel.recv().map_err(|e| {
-                            EvalError::new(e, loc.line, loc.column)
-                        })
-                    }
-                    _ => Err(EvalError::new("<- requires a channel", loc.line, loc.column))
+                    Value::Channel(channel) => channel
+                        .recv()
+                        .map_err(|e| EvalError::new(e, loc.line, loc.column)),
+                    _ => Err(EvalError::new(
+                        "<- requires a channel",
+                        loc.line,
+                        loc.column,
+                    )),
                 }
             }
 
@@ -823,13 +911,20 @@ impl Evaluator {
                             for arg in args {
                                 all_args.push(self.eval_expr(arg)?);
                             }
-                            value = self.eval_call(func_val, all_args, op.loc.line, op.loc.column)?;
+                            value =
+                                self.eval_call(func_val, all_args, op.loc.line, op.loc.column)?;
                         }
                         Expr::Var(name) => {
                             // Treat as function call with piped value as only arg
-                            let func_val = self.env.borrow().get(name)
-                                .ok_or_else(|| EvalError::new(format!("Undefined: {}", name), op.loc.line, op.loc.column))?;
-                            value = self.eval_call(func_val, vec![value], op.loc.line, op.loc.column)?;
+                            let func_val = self.env.borrow().get(name).ok_or_else(|| {
+                                EvalError::new(
+                                    format!("Undefined: {}", name),
+                                    op.loc.line,
+                                    op.loc.column,
+                                )
+                            })?;
+                            value =
+                                self.eval_call(func_val, vec![value], op.loc.line, op.loc.column)?;
                         }
                         _ => {
                             // For other expressions, just evaluate and replace
@@ -844,7 +939,11 @@ impl Evaluator {
             // Apply function repeatedly: func(func(func(arg1, arg2), arg3), arg4)...
             Expr::VarApply(func, args) => {
                 if args.is_empty() {
-                    return Err(EvalError::new("VarApply requires at least one argument", loc.line, loc.column));
+                    return Err(EvalError::new(
+                        "VarApply requires at least one argument",
+                        loc.line,
+                        loc.column,
+                    ));
                 }
                 let func_val = self.eval_expr(func)?;
                 let mut iter = args.iter();
@@ -852,7 +951,8 @@ impl Evaluator {
                 let mut acc = self.eval_expr(first)?;
                 for arg in iter {
                     let arg_val = self.eval_expr(arg)?;
-                    acc = self.eval_call(func_val.clone(), vec![acc, arg_val], loc.line, loc.column)?;
+                    acc =
+                        self.eval_call(func_val.clone(), vec![acc, arg_val], loc.line, loc.column)?;
                 }
                 Ok(acc)
             }
@@ -865,7 +965,13 @@ impl Evaluator {
                 // Path should be a list of keys/indices
                 let keys = match path_val {
                     Value::List(items) => items,
-                    _ => return Err(EvalError::new("NestAccess path must be a list", loc.line, loc.column)),
+                    _ => {
+                        return Err(EvalError::new(
+                            "NestAccess path must be a list",
+                            loc.line,
+                            loc.column,
+                        ))
+                    }
                 };
 
                 let mut current = data_val;
@@ -873,32 +979,54 @@ impl Evaluator {
                     current = match (&current, &key) {
                         // Record field access
                         (Value::Record(fields), Value::String(name)) => {
-                            fields.get(name)
-                                .cloned()
-                                .ok_or_else(|| EvalError::new(format!("Field not found: {}", name), loc.line, loc.column))?
+                            fields.get(name).cloned().ok_or_else(|| {
+                                EvalError::new(
+                                    format!("Field not found: {}", name),
+                                    loc.line,
+                                    loc.column,
+                                )
+                            })?
                         }
                         // List index access
                         (Value::List(items), Value::Int(idx)) => {
                             let i = *idx as usize;
-                            items.get(i)
-                                .cloned()
-                                .ok_or_else(|| EvalError::new(format!("Index out of bounds: {}", idx), loc.line, loc.column))?
+                            items.get(i).cloned().ok_or_else(|| {
+                                EvalError::new(
+                                    format!("Index out of bounds: {}", idx),
+                                    loc.line,
+                                    loc.column,
+                                )
+                            })?
                         }
                         // String to field name for records
                         (Value::Record(fields), Value::Int(idx)) => {
                             // Try to get field by index (for tuple-like records)
-                            fields.values().nth(*idx as usize)
-                                .cloned()
-                                .ok_or_else(|| EvalError::new(format!("Index out of bounds: {}", idx), loc.line, loc.column))?
+                            fields.values().nth(*idx as usize).cloned().ok_or_else(|| {
+                                EvalError::new(
+                                    format!("Index out of bounds: {}", idx),
+                                    loc.line,
+                                    loc.column,
+                                )
+                            })?
                         }
                         // Identifier in path as field name
                         (Value::Record(fields), key) => {
                             let name = key.to_string();
-                            fields.get(&name)
-                                .cloned()
-                                .ok_or_else(|| EvalError::new(format!("Field not found: {}", name), loc.line, loc.column))?
+                            fields.get(&name).cloned().ok_or_else(|| {
+                                EvalError::new(
+                                    format!("Field not found: {}", name),
+                                    loc.line,
+                                    loc.column,
+                                )
+                            })?
                         }
-                        _ => return Err(EvalError::new("Invalid nested access", loc.line, loc.column)),
+                        _ => {
+                            return Err(EvalError::new(
+                                "Invalid nested access",
+                                loc.line,
+                                loc.column,
+                            ))
+                        }
                     };
                 }
                 Ok(current)
@@ -922,7 +1050,13 @@ impl Evaluator {
                 let cmd_val = self.eval_expr(cmd)?;
                 let cmd_str = match cmd_val {
                     Value::String(s) => s,
-                    _ => return Err(EvalError::new("CmdCheck expects a string", loc.line, loc.column)),
+                    _ => {
+                        return Err(EvalError::new(
+                            "CmdCheck expects a string",
+                            loc.line,
+                            loc.column,
+                        ))
+                    }
                 };
                 let exists = exec::command_exists(&cmd_str);
                 Ok(Value::Bool(exists))
@@ -944,7 +1078,13 @@ impl Evaluator {
                                 return evaluator.eval_expr(&branch.body);
                             }
                         }
-                        _ => return Err(EvalError::new("select branch requires a channel", loc.line, loc.column))
+                        _ => {
+                            return Err(EvalError::new(
+                                "select branch requires a channel",
+                                loc.line,
+                                loc.column,
+                            ))
+                        }
                     }
                 }
                 // No channel had data
@@ -962,16 +1102,25 @@ impl Evaluator {
                         for item in items {
                             match item {
                                 Value::Channel(ch) => {
-                                    ch.send(message.clone()).map_err(|e| {
-                                        EvalError::new(e, loc.line, loc.column)
-                                    })?;
+                                    ch.send(message.clone())
+                                        .map_err(|e| EvalError::new(e, loc.line, loc.column))?;
                                 }
-                                _ => return Err(EvalError::new(">< requires a list of channels", loc.line, loc.column))
+                                _ => {
+                                    return Err(EvalError::new(
+                                        ">< requires a list of channels",
+                                        loc.line,
+                                        loc.column,
+                                    ))
+                                }
                             }
                         }
                         Ok(Value::Unit)
                     }
-                    _ => Err(EvalError::new(">< requires a list of channels", loc.line, loc.column))
+                    _ => Err(EvalError::new(
+                        ">< requires a list of channels",
+                        loc.line,
+                        loc.column,
+                    )),
                 }
             }
 
@@ -984,49 +1133,53 @@ impl Evaluator {
                 match list {
                     Value::List(items) => {
                         // Convert to sendable values
-                        let sendable_items: Vec<SendableValue> = items.into_iter()
-                            .map(|v| v.into())
-                            .collect();
+                        let sendable_items: Vec<SendableValue> =
+                            items.into_iter().map(|v| v.into()).collect();
 
                         // Capture environment as sendable
-                        let captured: HashMap<String, SendableValue> = self.env.borrow()
+                        let captured: HashMap<String, SendableValue> = self
+                            .env
+                            .borrow()
                             .get_all()
                             .into_iter()
                             .map(|(k, v)| (k, v.into()))
                             .collect();
 
                         let results: Vec<SendableValue> = thread::scope(|s| {
-                            let handles: Vec<_> = sendable_items.into_iter().map(|item| {
-                                let body_clone = (*body).clone();
-                                let var_name_clone = var_name.clone();
-                                let captured = captured.clone();
+                            let handles: Vec<_> = sendable_items
+                                .into_iter()
+                                .map(|item| {
+                                    let body_clone = (*body).clone();
+                                    let var_name_clone = var_name.clone();
+                                    let captured = captured.clone();
 
-                                s.spawn(move || {
-                                    let mut eval = Evaluator::new();
+                                    s.spawn(move || {
+                                        let mut eval = Evaluator::new();
 
-                                    // Restore captured variables
-                                    for (k, v) in captured {
-                                        eval.env.borrow_mut().define(k, Value::from(v));
-                                    }
+                                        // Restore captured variables
+                                        for (k, v) in captured {
+                                            eval.env.borrow_mut().define(k, Value::from(v));
+                                        }
 
-                                    // Bind loop variable
-                                    eval.env.borrow_mut().define(var_name_clone, Value::from(item));
+                                        // Bind loop variable
+                                        eval.env
+                                            .borrow_mut()
+                                            .define(var_name_clone, Value::from(item));
 
-                                    match eval.eval_expr(&body_clone) {
-                                        Ok(v) => SendableValue::from(v),
-                                        Err(_) => SendableValue::Unit,
-                                    }
+                                        match eval.eval_expr(&body_clone) {
+                                            Ok(v) => SendableValue::from(v),
+                                            Err(_) => SendableValue::Unit,
+                                        }
+                                    })
                                 })
-                            }).collect();
+                                .collect();
 
-                            handles.into_iter()
-                                .map(|h| h.join().unwrap())
-                                .collect()
+                            handles.into_iter().map(|h| h.join().unwrap()).collect()
                         });
 
                         Ok(Value::List(results.into_iter().map(Value::from).collect()))
                     }
-                    _ => Err(EvalError::new("&% requires a list", loc.line, loc.column))
+                    _ => Err(EvalError::new("&% requires a list", loc.line, loc.column)),
                 }
             }
 
@@ -1035,34 +1188,37 @@ impl Evaluator {
                 use crate::runtime::value::SendableValue;
                 use std::thread;
 
-                let captured: HashMap<String, SendableValue> = self.env.borrow()
+                let captured: HashMap<String, SendableValue> = self
+                    .env
+                    .borrow()
                     .get_all()
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect();
 
                 let results: Vec<SendableValue> = thread::scope(|s| {
-                    let handles: Vec<_> = exprs.iter().map(|expr| {
-                        let expr_clone = expr.clone();
-                        let captured = captured.clone();
+                    let handles: Vec<_> = exprs
+                        .iter()
+                        .map(|expr| {
+                            let expr_clone = expr.clone();
+                            let captured = captured.clone();
 
-                        s.spawn(move || {
-                            let mut eval = Evaluator::new();
+                            s.spawn(move || {
+                                let mut eval = Evaluator::new();
 
-                            for (k, v) in captured {
-                                eval.env.borrow_mut().define(k, Value::from(v));
-                            }
+                                for (k, v) in captured {
+                                    eval.env.borrow_mut().define(k, Value::from(v));
+                                }
 
-                            match eval.eval_expr(&expr_clone) {
-                                Ok(v) => SendableValue::from(v),
-                                Err(_) => SendableValue::Unit,
-                            }
+                                match eval.eval_expr(&expr_clone) {
+                                    Ok(v) => SendableValue::from(v),
+                                    Err(_) => SendableValue::Unit,
+                                }
+                            })
                         })
-                    }).collect();
+                        .collect();
 
-                    handles.into_iter()
-                        .map(|h| h.join().unwrap())
-                        .collect()
+                    handles.into_iter().map(|h| h.join().unwrap()).collect()
                 });
 
                 Ok(Value::List(results.into_iter().map(Value::from).collect()))
@@ -1071,14 +1227,20 @@ impl Evaluator {
             // Parallel race: &? [expr1 expr2 ...] - returns first completed
             Expr::ParRace(exprs) => {
                 use crate::runtime::value::SendableValue;
-                use std::thread;
                 use std::sync::mpsc;
+                use std::thread;
 
                 if exprs.is_empty() {
-                    return Err(EvalError::new("&? requires at least one expression", loc.line, loc.column));
+                    return Err(EvalError::new(
+                        "&? requires at least one expression",
+                        loc.line,
+                        loc.column,
+                    ));
                 }
 
-                let captured: HashMap<String, SendableValue> = self.env.borrow()
+                let captured: HashMap<String, SendableValue> = self
+                    .env
+                    .borrow()
                     .get_all()
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
@@ -1118,7 +1280,9 @@ impl Evaluator {
                 use std::thread;
 
                 let expr_clone = (*expr).clone();
-                let captured: HashMap<String, SendableValue> = self.env.borrow()
+                let captured: HashMap<String, SendableValue> = self
+                    .env
+                    .borrow()
                     .get_all()
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
@@ -1136,68 +1300,81 @@ impl Evaluator {
 
                 Ok(Value::Unit)
             }
-
         }
     }
 
     /// Convert a value to a specific type
     fn convert_type(&self, value: Value, ty: &Type, loc: Loc) -> Result<Value, EvalError> {
         match ty {
-            Type::Int => {
-                match value {
-                    Value::Int(n) => Ok(Value::Int(n)),
-                    Value::Float(f) => Ok(Value::Int(f as i64)),
-                    Value::String(s) => s.parse::<i64>()
-                        .map(Value::Int)
-                        .map_err(|_| EvalError::new("Cannot convert to integer", loc.line, loc.column)),
-                    Value::Bool(b) => Ok(Value::Int(if b { 1 } else { 0 })),
-                    _ => Err(EvalError::new("Cannot convert to integer", loc.line, loc.column))
-                }
-            }
-            Type::Float => {
-                match value {
-                    Value::Float(f) => Ok(Value::Float(f)),
-                    Value::Int(n) => Ok(Value::Float(n as f64)),
-                    Value::String(s) => s.parse::<f64>()
-                        .map(Value::Float)
-                        .map_err(|_| EvalError::new("Cannot convert to float", loc.line, loc.column)),
-                    _ => Err(EvalError::new("Cannot convert to float", loc.line, loc.column))
-                }
-            }
-            Type::Query => {
-                match value {
-                    Value::Bool(b) => Ok(Value::Bool(b)),
-                    Value::Int(n) => Ok(Value::Bool(n != 0)),
-                    Value::String(s) => Ok(Value::Bool(!s.is_empty() && s != "false")),
-                    _ => Err(EvalError::new("Cannot convert to query", loc.line, loc.column))
-                }
-            }
-            Type::Str => {
-                Ok(Value::String(value.to_string()))
-            }
-            Type::Byte => {
-                match value {
-                    Value::Int(n) => {
-                        if n >= 0 && n <= 255 {
-                            Ok(Value::Int(n))
-                        } else {
-                            Err(EvalError::new("Integer out of byte range (0-255)", loc.line, loc.column))
-                        }
+            Type::Int => match value {
+                Value::Int(n) => Ok(Value::Int(n)),
+                Value::Float(f) => Ok(Value::Int(f as i64)),
+                Value::String(s) => s
+                    .parse::<i64>()
+                    .map(Value::Int)
+                    .map_err(|_| EvalError::new("Cannot convert to integer", loc.line, loc.column)),
+                Value::Bool(b) => Ok(Value::Int(if b { 1 } else { 0 })),
+                _ => Err(EvalError::new(
+                    "Cannot convert to integer",
+                    loc.line,
+                    loc.column,
+                )),
+            },
+            Type::Float => match value {
+                Value::Float(f) => Ok(Value::Float(f)),
+                Value::Int(n) => Ok(Value::Float(n as f64)),
+                Value::String(s) => s
+                    .parse::<f64>()
+                    .map(Value::Float)
+                    .map_err(|_| EvalError::new("Cannot convert to float", loc.line, loc.column)),
+                _ => Err(EvalError::new(
+                    "Cannot convert to float",
+                    loc.line,
+                    loc.column,
+                )),
+            },
+            Type::Query => match value {
+                Value::Bool(b) => Ok(Value::Bool(b)),
+                Value::Int(n) => Ok(Value::Bool(n != 0)),
+                Value::String(s) => Ok(Value::Bool(!s.is_empty() && s != "false")),
+                _ => Err(EvalError::new(
+                    "Cannot convert to query",
+                    loc.line,
+                    loc.column,
+                )),
+            },
+            Type::Str => Ok(Value::String(value.to_string())),
+            Type::Byte => match value {
+                Value::Int(n) => {
+                    if n >= 0 && n <= 255 {
+                        Ok(Value::Int(n))
+                    } else {
+                        Err(EvalError::new(
+                            "Integer out of byte range (0-255)",
+                            loc.line,
+                            loc.column,
+                        ))
                     }
-                    Value::String(s) => {
-                        if s.len() == 1 {
-                            Ok(Value::Int(s.bytes().next().unwrap() as i64))
-                        } else {
-                            Err(EvalError::new("String must be single byte", loc.line, loc.column))
-                        }
-                    }
-                    _ => Err(EvalError::new("Cannot convert to byte", loc.line, loc.column))
                 }
-            }
-            Type::Nothing => {
-                Ok(Value::Unit)
-            }
-            _ => Ok(value) // For other types, return as-is
+                Value::String(s) => {
+                    if s.len() == 1 {
+                        Ok(Value::Int(s.bytes().next().unwrap() as i64))
+                    } else {
+                        Err(EvalError::new(
+                            "String must be single byte",
+                            loc.line,
+                            loc.column,
+                        ))
+                    }
+                }
+                _ => Err(EvalError::new(
+                    "Cannot convert to byte",
+                    loc.line,
+                    loc.column,
+                )),
+            },
+            Type::Nothing => Ok(Value::Unit),
+            _ => Ok(value), // For other types, return as-is
         }
     }
 
@@ -1212,7 +1389,7 @@ impl Evaluator {
             (Value::Some(_) | Value::None, Type::Option(_)) => true,
             (Value::Ok(_) | Value::Err(_), Type::Result(_, _)) => true,
             (Value::Unit, Type::Nothing) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -1226,7 +1403,14 @@ impl Evaluator {
         }
     }
 
-    fn eval_binop(&self, op: BinOp, lhs: Value, rhs: Value, line: usize, col: usize) -> Result<Value, EvalError> {
+    fn eval_binop(
+        &self,
+        op: BinOp,
+        lhs: Value,
+        rhs: Value,
+        line: usize,
+        col: usize,
+    ) -> Result<Value, EvalError> {
         match op {
             BinOp::Add => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
@@ -1234,18 +1418,21 @@ impl Evaluator {
                 (Value::Int(a), Value::Float(b)) => Ok(Value::Float(a as f64 + b)),
                 (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + b as f64)),
                 (Value::String(a), Value::String(b)) => Ok(Value::String(a + &b)),
-                (Value::List(mut a), Value::List(b)) => { a.extend(b); Ok(Value::List(a)) }
-                _ => Err(EvalError::new("Type mismatch for .+", line, col))
+                (Value::List(mut a), Value::List(b)) => {
+                    a.extend(b);
+                    Ok(Value::List(a))
+                }
+                _ => Err(EvalError::new("Type mismatch for .+", line, col)),
             },
             BinOp::Sub => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-                _ => Err(EvalError::new("Type mismatch for .-", line, col))
+                _ => Err(EvalError::new("Type mismatch for .-", line, col)),
             },
             BinOp::Mul => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-                _ => Err(EvalError::new("Type mismatch for .*", line, col))
+                _ => Err(EvalError::new("Type mismatch for .*", line, col)),
             },
             BinOp::Div => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => {
@@ -1256,16 +1443,16 @@ impl Evaluator {
                     }
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
-                _ => Err(EvalError::new("Type mismatch for ./", line, col))
+                _ => Err(EvalError::new("Type mismatch for ./", line, col)),
             },
             BinOp::Mod => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a % b)),
-                _ => Err(EvalError::new("Type mismatch for .%", line, col))
+                _ => Err(EvalError::new("Type mismatch for .%", line, col)),
             },
             BinOp::Pow => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.pow(b as u32))),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(b))),
-                _ => Err(EvalError::new("Type mismatch for .^", line, col))
+                _ => Err(EvalError::new("Type mismatch for .^", line, col)),
             },
             BinOp::Eq => Ok(Value::Bool(lhs == rhs)),
             BinOp::Neq => Ok(Value::Bool(lhs != rhs)),
@@ -1273,47 +1460,64 @@ impl Evaluator {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a < b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
                 (Value::String(a), Value::String(b)) => Ok(Value::Bool(a < b)),
-                _ => Err(EvalError::new("Type mismatch for .<", line, col))
+                _ => Err(EvalError::new("Type mismatch for .<", line, col)),
             },
             BinOp::Gt => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a > b)),
                 (Value::String(a), Value::String(b)) => Ok(Value::Bool(a > b)),
-                _ => Err(EvalError::new("Type mismatch for .>", line, col))
+                _ => Err(EvalError::new("Type mismatch for .>", line, col)),
             },
             BinOp::Lte => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a <= b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
-                _ => Err(EvalError::new("Type mismatch for .<=", line, col))
+                _ => Err(EvalError::new("Type mismatch for .<=", line, col)),
             },
             BinOp::Gte => match (lhs, rhs) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a >= b)),
-                _ => Err(EvalError::new("Type mismatch for .>=", line, col))
+                _ => Err(EvalError::new("Type mismatch for .>=", line, col)),
             },
             BinOp::And => Ok(Value::Bool(self.is_truthy(&lhs) && self.is_truthy(&rhs))),
             BinOp::Or => Ok(Value::Bool(self.is_truthy(&lhs) || self.is_truthy(&rhs))),
         }
     }
 
-    fn eval_unaryop(&self, op: UnaryOp, val: Value, line: usize, col: usize) -> Result<Value, EvalError> {
+    fn eval_unaryop(
+        &self,
+        op: UnaryOp,
+        val: Value,
+        line: usize,
+        col: usize,
+    ) -> Result<Value, EvalError> {
         match op {
             UnaryOp::Not => Ok(Value::Bool(!self.is_truthy(&val))),
             UnaryOp::Neg => match val {
                 Value::Int(n) => Ok(Value::Int(-n)),
                 Value::Float(n) => Ok(Value::Float(-n)),
-                _ => Err(EvalError::new("Cannot negate non-number", line, col))
-            }
+                _ => Err(EvalError::new("Cannot negate non-number", line, col)),
+            },
         }
     }
 
-    fn eval_call(&mut self, func: Value, args: Vec<Value>, line: usize, col: usize) -> Result<Value, EvalError> {
+    fn eval_call(
+        &mut self,
+        func: Value,
+        args: Vec<Value>,
+        line: usize,
+        col: usize,
+    ) -> Result<Value, EvalError> {
         match func {
             Value::Func(func_def) => {
                 if args.len() != func_def.params.len() {
                     return Err(EvalError::new(
-                        format!("Expected {} arguments, got {}", func_def.params.len(), args.len()),
-                        line, col
+                        format!(
+                            "Expected {} arguments, got {}",
+                            func_def.params.len(),
+                            args.len()
+                        ),
+                        line,
+                        col,
                     ));
                 }
 
@@ -1325,10 +1529,8 @@ impl Evaluator {
                 let mut evaluator = Evaluator::with_env(new_env);
                 evaluator.eval_expr(&func_def.body)
             }
-            Value::Builtin(name) => {
-                crate::builtin::call_builtin(&name, args, line, col)
-            }
-            _ => Err(EvalError::new("Not a function", line, col))
+            Value::Builtin(name) => crate::builtin::call_builtin(&name, args, line, col),
+            _ => Err(EvalError::new("Not a function", line, col)),
         }
     }
 
@@ -1358,9 +1560,7 @@ impl Evaluator {
                 }
             }
 
-            Pattern::Var(name) => {
-                Some(vec![(name.clone(), value.clone())])
-            }
+            Pattern::Var(name) => Some(vec![(name.clone(), value.clone())]),
 
             Pattern::None => {
                 if *value == Value::None {
@@ -1452,8 +1652,8 @@ mod tests {
     use crate::parser::Parser;
 
     fn eval(input: &str) -> Result<Value, EvalError> {
-        let program = Parser::parse_source(input)
-            .map_err(|e| EvalError::new(e.message, e.line, e.column))?;
+        let program =
+            Parser::parse_source(input).map_err(|e| EvalError::new(e.message, e.line, e.column))?;
         let mut evaluator = Evaluator::new();
         evaluator.eval_program(&program)
     }
@@ -1537,7 +1737,10 @@ mod tests {
 
     #[test]
     fn test_eval_string_concat() {
-        assert_eq!(eval_ok(".+ \"hello\" \" world\""), Value::String("hello world".to_string()));
+        assert_eq!(
+            eval_ok(".+ \"hello\" \" world\""),
+            Value::String("hello world".to_string())
+        );
     }
 
     // Comparison
@@ -1612,7 +1815,10 @@ mod tests {
     // List
     #[test]
     fn test_eval_list() {
-        assert_eq!(eval_ok("[1 2 3]"), Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+        assert_eq!(
+            eval_ok("[1 2 3]"),
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
     }
 
     #[test]
@@ -1644,7 +1850,10 @@ mod tests {
 
     #[test]
     fn test_eval_cond_multi() {
-        assert_eq!(eval_ok("?: | false -> 1 | true -> 2 | _ -> 3"), Value::Int(2));
+        assert_eq!(
+            eval_ok("?: | false -> 1 | true -> 2 | _ -> 3"),
+            Value::Int(2)
+        );
     }
 
     // Function
@@ -1666,20 +1875,29 @@ mod tests {
 
     #[test]
     fn test_eval_lambda() {
-        assert_eq!(eval_ok("^= double |> [x] .* $x 2\n($double 5)"), Value::Int(10));
+        assert_eq!(
+            eval_ok("^= double |> [x] .* $x 2\n($double 5)"),
+            Value::Int(10)
+        );
     }
 
     // Iteration
     #[test]
     fn test_eval_map() {
         let result = eval_ok("%> [1 2 3] [x] .* $x 2");
-        assert_eq!(result, Value::List(vec![Value::Int(2), Value::Int(4), Value::Int(6)]));
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Int(2), Value::Int(4), Value::Int(6)])
+        );
     }
 
     #[test]
     fn test_eval_filter() {
         let result = eval_ok("%< [1 2 3 4 5] [x] .> $x 2");
-        assert_eq!(result, Value::List(vec![Value::Int(3), Value::Int(4), Value::Int(5)]));
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Int(3), Value::Int(4), Value::Int(5)])
+        );
     }
 
     #[test]
@@ -1691,7 +1909,15 @@ mod tests {
     #[test]
     fn test_eval_range() {
         let result = eval_ok("%.. 1 5");
-        assert_eq!(result, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)]));
+        assert_eq!(
+            result,
+            Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+                Value::Int(4)
+            ])
+        );
     }
 
     // Builtin functions
@@ -1707,12 +1933,18 @@ mod tests {
 
     #[test]
     fn test_eval_builtin_tail() {
-        assert_eq!(eval_ok("(tail [1 2 3])"), Value::List(vec![Value::Int(2), Value::Int(3)]));
+        assert_eq!(
+            eval_ok("(tail [1 2 3])"),
+            Value::List(vec![Value::Int(2), Value::Int(3)])
+        );
     }
 
     #[test]
     fn test_eval_builtin_rev() {
-        assert_eq!(eval_ok("(rev [1 2 3])"), Value::List(vec![Value::Int(3), Value::Int(2), Value::Int(1)]));
+        assert_eq!(
+            eval_ok("(rev [1 2 3])"),
+            Value::List(vec![Value::Int(3), Value::Int(2), Value::Int(1)])
+        );
     }
 
     // Option/Result
@@ -1729,7 +1961,10 @@ mod tests {
     #[test]
     fn test_eval_err_result() {
         let result = eval_ok("(err \"oops\")");
-        assert_eq!(result, Value::Err(Box::new(Value::String("oops".to_string()))));
+        assert_eq!(
+            result,
+            Value::Err(Box::new(Value::String("oops".to_string())))
+        );
     }
 
     #[test]
@@ -1861,7 +2096,8 @@ mod tests {
 
     #[test]
     fn test_channel_fifo() {
-        let code = "^= ch @ci; -> $ch 10; -> $ch 20; ^= first <- $ch; ^= second <- $ch; .- $second $first";
+        let code =
+            "^= ch @ci; -> $ch 10; -> $ch 20; ^= first <- $ch; ^= second <- $ch; .- $second $first";
         assert_eq!(eval_ok(code), Value::Int(10));
     }
 }

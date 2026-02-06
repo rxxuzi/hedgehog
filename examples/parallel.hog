@@ -1,0 +1,42 @@
+# Parallel processing example
+# Demonstrates &% (parallel each), &= (join), <> (select), >< (broadcast)
+
+# Parallel map: square each number concurrently
+^= numbers [1 2 3 4 5]
+^= squared &% $numbers [n] .* $n $n
+~> "Squared:"
+~> $squared
+
+# Parallel join: run multiple tasks concurrently
+^= results &= {
+  .+ 10 20
+  .* 3 4
+  .- 100 50
+}
+~> "Join results:"
+~> $results
+
+# Parallel with captured variables
+^= multiplier 10
+^= scaled &% [1 2 3] [x] .* $x $multiplier
+~> "Scaled by 10:"
+~> $scaled
+
+# Select: pick first available channel
+^= ch1 @ci
+^= ch2 @ci
+-> $ch1 "from ch1"
+~> "Select:"
+<>
+| <- $ch1 -> [msg] ~> $msg
+| <- $ch2 -> [msg] ~> $msg
+
+# Broadcast: send to multiple channels
+^= a @ci
+^= b @ci
+^= c @ci
+>< [$a $b $c] 999
+~> "Broadcast:"
+~> <- $a
+~> <- $b
+~> <- $c
