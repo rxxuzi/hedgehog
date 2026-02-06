@@ -91,7 +91,7 @@ impl Parser {
         }
     }
 
-    /// Skip newlines (Hoon-style: treat as whitespace)
+    /// Skip newlines (Berry-style: treat as whitespace)
     fn skip_newlines(&mut self) {
         while self.check(&Token::Newline) {
             self.advance();
@@ -99,7 +99,7 @@ impl Parser {
     }
 
     /// Parse a complete program
-    /// Hoon-style: newlines are whitespace, only `;` separates statements
+    /// Berry-style: newlines are whitespace, only `;` separates statements
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut stmts = Vec::new();
 
@@ -119,7 +119,7 @@ impl Parser {
         Ok(Program::new(stmts))
     }
 
-    /// Skip whitespace and newlines (Hoon-style: newlines are just whitespace)
+    /// Skip whitespace and newlines (Berry-style: newlines are just whitespace)
     fn skip_whitespace_and_newlines(&mut self) {
         while self.check(&Token::Newline) {
             self.advance();
@@ -334,6 +334,19 @@ impl Parser {
             Token::None => {
                 self.advance();
                 Ok(Node::new(Expr::Lit(Literal::None), loc))
+            }
+
+            // Type literal as expression: @ci creates a channel
+            Token::TypeLit(name) => {
+                self.advance();
+                let ty = self.parse_type_from_name(&name, loc)?;
+                match ty {
+                    Type::Channel(inner) => Ok(Node::new(Expr::MakeChan(Type::Channel(inner)), loc)),
+                    _ => Err(ParseError::new(
+                        format!("Type @{} cannot be used as expression (only channel types)", name),
+                        loc.line, loc.column
+                    ))
+                }
             }
 
             // Variable reference: $name

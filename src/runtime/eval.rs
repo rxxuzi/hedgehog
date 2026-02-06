@@ -4,123 +4,12 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt;
 use std::rc::Rc;
 
 use crate::ast::{BinOp, Expr, InterpPart, Literal, Loc, Node, Pattern, Program, Stmt, Type, UnaryOp};
-use crate::env::{Env, FuncDef};
+use crate::runtime::env::{Env, FuncDef};
+use crate::runtime::value::{Value, EvalError};
 use crate::exec;
-
-/// Runtime values
-#[derive(Debug, Clone, PartialEq)]
-pub enum Value {
-    /// Integer
-    Int(i64),
-
-    /// Float
-    Float(f64),
-
-    /// String
-    String(String),
-
-    /// Boolean
-    Bool(bool),
-
-    /// List
-    List(Vec<Value>),
-
-    /// Record
-    Record(HashMap<String, Value>),
-
-    /// Tuple
-    Tuple(Vec<Value>),
-
-    /// Option Some
-    Some(Box<Value>),
-
-    /// Option None
-    None,
-
-    /// Result Ok
-    Ok(Box<Value>),
-
-    /// Result Err
-    Err(Box<Value>),
-
-    /// Function
-    Func(Rc<FuncDef>),
-
-    /// Built-in function
-    Builtin(String),
-
-    /// Unit (no value)
-    Unit,
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Int(n) => write!(f, "{}", n),
-            Value::Float(n) => write!(f, "{}", n),
-            Value::String(s) => write!(f, "{}", s),
-            Value::Bool(b) => write!(f, "{}", b),
-            Value::List(items) => {
-                write!(f, "[")?;
-                for (i, item) in items.iter().enumerate() {
-                    if i > 0 { write!(f, " ")?; }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "]")
-            }
-            Value::Record(fields) => {
-                write!(f, "{{")?;
-                for (i, (k, v)) in fields.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
-                    write!(f, "{}: {}", k, v)?;
-                }
-                write!(f, "}}")
-            }
-            Value::Tuple(items) => {
-                write!(f, "(,")?;
-                for item in items {
-                    write!(f, " {}", item)?;
-                }
-                write!(f, ")")
-            }
-            Value::Some(v) => write!(f, "(some {})", v),
-            Value::None => write!(f, "none"),
-            Value::Ok(v) => write!(f, "(ok {})", v),
-            Value::Err(v) => write!(f, "(err {})", v),
-            Value::Func(func) => write!(f, "<func {}>", func.name),
-            Value::Builtin(name) => write!(f, "<builtin {}>", name),
-            Value::Unit => write!(f, "()"),
-        }
-    }
-}
-
-/// Evaluation error
-#[derive(Debug, Clone)]
-pub struct EvalError {
-    pub message: String,
-    pub line: usize,
-    pub column: usize,
-}
-
-impl fmt::Display for EvalError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error at {}:{}: {}", self.line, self.column, self.message)
-    }
-}
-
-impl EvalError {
-    pub fn new(message: impl Into<String>, line: usize, column: usize) -> Self {
-        Self {
-            message: message.into(),
-            line,
-            column,
-        }
-    }
-}
 
 /// Evaluator
 pub struct Evaluator {
@@ -808,6 +697,7 @@ impl Evaluator {
                     Value::Err(_) => "@!",
                     Value::Func(_) => "@fn",
                     Value::Builtin(_) => "@fn",
+                    Value::Channel(_) => "@c",
                     Value::Unit => "@n",
                 };
                 Ok(Value::String(type_name.to_string()))
@@ -883,15 +773,39 @@ impl Evaluator {
             }
 
             // Channel send: -> ch value
-            Expr::ChanSend(_ch, _value) => {
-                // TODO: Implement channel send
-                Err(EvalError::new("Channels not yet implemented", loc.line, loc.column))
+            Expr::ChanSend(ch_expr, value_expr) => {
+                let ch = self.eval_expr(ch_expr)?;
+                let value = self.eval_expr(value_expr)?;
+
+                match ch {
+                    Value::Channel(channel) => {
+                        channel.send(value).map_err(|e| {
+                            EvalError::new(e, loc.line, loc.column)
+                        })?;
+                        Ok(Value::Unit)
+                    }
+                    _ => Err(EvalError::new("-> requires a channel", loc.line, loc.column))
+                }
             }
 
             // Channel receive: <- ch
-            Expr::ChanRecv(_ch) => {
-                // TODO: Implement channel receive
-                Err(EvalError::new("Channels not yet implemented", loc.line, loc.column))
+            Expr::ChanRecv(ch_expr) => {
+                let ch = self.eval_expr(ch_expr)?;
+
+                match ch {
+                    Value::Channel(channel) => {
+                        channel.recv().map_err(|e| {
+                            EvalError::new(e, loc.line, loc.column)
+                        })
+                    }
+                    _ => Err(EvalError::new("<- requires a channel", loc.line, loc.column))
+                }
+            }
+
+            // Channel creation: @ci
+            Expr::MakeChan(_ty) => {
+                use crate::runtime::channel::Channel;
+                Ok(Value::Channel(Channel::new()))
             }
 
             // Pipeline: :: initial ops... ==
@@ -1009,20 +923,55 @@ impl Evaluator {
                     Value::String(s) => s,
                     _ => return Err(EvalError::new("CmdCheck expects a string", loc.line, loc.column)),
                 };
-                let exists = crate::exec::command_exists(&cmd_str);
+                let exists = exec::command_exists(&cmd_str);
                 Ok(Value::Bool(exists))
             }
 
             // Select: <> | <- ch -> [x] body | ...
-            Expr::Select(_branches) => {
-                // TODO: Implement when channels are added
-                Err(EvalError::new("Select not yet implemented (channels required)", loc.line, loc.column))
+            // Non-blocking select: tries each branch in order
+            Expr::Select(branches) => {
+                for branch in branches {
+                    let ch = self.eval_expr(&branch.channel)?;
+                    match ch {
+                        Value::Channel(channel) => {
+                            if let Some(value) = channel.try_recv() {
+                                // Create new scope with the received value
+                                let new_env = Env::with_parent(self.env.clone()).wrap();
+                                new_env.borrow_mut().define(branch.var.clone(), value);
+
+                                let mut evaluator = Evaluator::with_env(new_env);
+                                return evaluator.eval_expr(&branch.body);
+                            }
+                        }
+                        _ => return Err(EvalError::new("select branch requires a channel", loc.line, loc.column))
+                    }
+                }
+                // No channel had data
+                Ok(Value::None)
             }
 
             // Broadcast: >< channels message
-            Expr::Broadcast(_channels, _message) => {
-                // TODO: Implement when channels are added
-                Err(EvalError::new("Broadcast not yet implemented (channels required)", loc.line, loc.column))
+            // Send message to all channels in a list
+            Expr::Broadcast(channels_expr, message_expr) => {
+                let channels = self.eval_expr(channels_expr)?;
+                let message = self.eval_expr(message_expr)?;
+
+                match channels {
+                    Value::List(items) => {
+                        for item in items {
+                            match item {
+                                Value::Channel(ch) => {
+                                    ch.send(message.clone()).map_err(|e| {
+                                        EvalError::new(e, loc.line, loc.column)
+                                    })?;
+                                }
+                                _ => return Err(EvalError::new(">< requires a list of channels", loc.line, loc.column))
+                            }
+                        }
+                        Ok(Value::Unit)
+                    }
+                    _ => Err(EvalError::new(">< requires a list of channels", loc.line, loc.column))
+                }
             }
 
             // TODO: Implement remaining expressions
@@ -1724,6 +1673,34 @@ mod tests {
     #[test]
     fn test_eval_typed_lambda() {
         let code = "^= double |; [x @i] @i .* $x 2; ($double 5)";
+        assert_eq!(eval_ok(code), Value::Int(10));
+    }
+
+    // v0.2.7: Channels
+    #[test]
+    fn test_channel_create() {
+        let result = eval_ok("^= ch @ci; $ch");
+        match result {
+            Value::Channel(_) => {}
+            _ => panic!("Expected Channel, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_channel_send_recv() {
+        let code = "^= ch @ci; -> $ch 42; <- $ch";
+        assert_eq!(eval_ok(code), Value::Int(42));
+    }
+
+    #[test]
+    fn test_channel_multiple() {
+        let code = "^= ch @ci; -> $ch 1; -> $ch 2; -> $ch 3; ^= a <- $ch; ^= b <- $ch; .+ $a $b";
+        assert_eq!(eval_ok(code), Value::Int(3));
+    }
+
+    #[test]
+    fn test_channel_fifo() {
+        let code = "^= ch @ci; -> $ch 10; -> $ch 20; ^= first <- $ch; ^= second <- $ch; .- $second $first";
         assert_eq!(eval_ok(code), Value::Int(10));
     }
 }

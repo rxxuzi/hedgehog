@@ -106,3 +106,13 @@ fn test_basics() {
 
     insta::assert_snapshot!("basics", stdout);
 }
+
+#[test]
+fn test_channel() {
+    let path = Path::new("examples/channel.hog");
+    let (stdout, _stderr, code) = run_hog_file(path);
+
+    assert_eq!(code, 0);
+
+    insta::assert_snapshot!("channel", stdout);
+}

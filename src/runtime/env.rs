@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::eval::Value;
+use crate::runtime::value::Value;
 
 /// Environment for variable bindings
 #[derive(Debug, Clone)]

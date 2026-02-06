@@ -305,6 +305,9 @@ pub enum Expr {
     /// Channel receive: <- channel (1 child)
     ChanRecv(Box<Node<Expr>>),
 
+    /// Channel creation: @ci (type literal as expression)
+    MakeChan(Type),
+
     /// Pipeline: :: expr ops... == (delimited by ==)
     Pipeline(Box<Node<Expr>>, Vec<Node<Expr>>),
 

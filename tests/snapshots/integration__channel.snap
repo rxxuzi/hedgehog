@@ -1,0 +1,11 @@
+---
+source: tests/integration.rs
+assertion_line: 117
+expression: stdout
+---
+10
+20
+30
+42
+hello
+world

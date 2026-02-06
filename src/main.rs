@@ -1,6 +1,6 @@
 //! Hedgehog - A keyword-less shell scripting language
 
-use hedgehog::eval::{Evaluator, Value};
+use hedgehog::runtime::{Evaluator, Value};
 use hedgehog::parser::Parser;
 use std::env as std_env;
 use std::fs;

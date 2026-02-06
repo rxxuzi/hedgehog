@@ -2,7 +2,7 @@
 //!
 //! Core functions available without imports.
 
-use crate::eval::{EvalError, Value};
+use crate::runtime::{EvalError, Value};
 
 /// Call a built-in function
 pub fn call_builtin(name: &str, args: Vec<Value>, line: usize, col: usize) -> Result<Value, EvalError> {

@@ -1,0 +1,28 @@
+# Channel example
+# Demonstrates buffered channel communication
+
+# Create a channel
+^= ch @ci
+
+# Send values
+-> $ch 10
+-> $ch 20
+-> $ch 30
+
+# Receive and print
+~> <- $ch
+~> <- $ch
+~> <- $ch
+
+# Channel with computation
+^= calc @ci
+-> $calc .* 6 7
+~> <- $calc
+
+# Multiple channels
+^= ch1 @ci
+^= ch2 @ci
+-> $ch1 "hello"
+-> $ch2 "world"
+~> <- $ch1
+~> <- $ch2
