@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast::{BinOp, Expr, InterpPart, Literal, Loc, Node, Pattern, Program, Stmt, Type, UnaryOp};
 use crate::runtime::env::{Env, FuncDef};
@@ -108,7 +109,7 @@ impl Evaluator {
                     body.clone(),
                     self.env.clone(),
                 );
-                self.env.borrow_mut().define(name.clone(), Value::Func(Rc::new(func)));
+                self.env.borrow_mut().define(name.clone(), Value::Func(Arc::new(func)));
                 Ok(Value::Unit)
             }
 
@@ -121,7 +122,7 @@ impl Evaluator {
                     body.clone(),
                     self.env.clone(),
                 );
-                self.env.borrow_mut().define(name.clone(), Value::Func(Rc::new(func)));
+                self.env.borrow_mut().define(name.clone(), Value::Func(Arc::new(func)));
                 Ok(Value::Unit)
             }
 
@@ -392,7 +393,7 @@ impl Evaluator {
                     (**body).clone(),
                     self.env.clone(),
                 );
-                Ok(Value::Func(Rc::new(func)))
+                Ok(Value::Func(Arc::new(func)))
             }
 
             Expr::TypedLambda(typed_params, _ret_type, body) => {
@@ -404,7 +405,7 @@ impl Evaluator {
                     (**body).clone(),
                     self.env.clone(),
                 );
-                Ok(Value::Func(Rc::new(func)))
+                Ok(Value::Func(Arc::new(func)))
             }
 
             Expr::Cond(cond, then_expr, else_expr) => {
@@ -974,8 +975,168 @@ impl Evaluator {
                 }
             }
 
-            // TODO: Implement remaining expressions
-            _ => Err(EvalError::new("Not yet implemented", loc.line, loc.column))
+            // Parallel each: &% list [var] body
+            Expr::ParEach(list_expr, var_name, body) => {
+                use crate::runtime::value::SendableValue;
+                use std::thread;
+
+                let list = self.eval_expr(list_expr)?;
+                match list {
+                    Value::List(items) => {
+                        // Convert to sendable values
+                        let sendable_items: Vec<SendableValue> = items.into_iter()
+                            .map(|v| v.into())
+                            .collect();
+
+                        // Capture environment as sendable
+                        let captured: HashMap<String, SendableValue> = self.env.borrow()
+                            .get_all()
+                            .into_iter()
+                            .map(|(k, v)| (k, v.into()))
+                            .collect();
+
+                        let results: Vec<SendableValue> = thread::scope(|s| {
+                            let handles: Vec<_> = sendable_items.into_iter().map(|item| {
+                                let body_clone = (*body).clone();
+                                let var_name_clone = var_name.clone();
+                                let captured = captured.clone();
+
+                                s.spawn(move || {
+                                    let mut eval = Evaluator::new();
+
+                                    // Restore captured variables
+                                    for (k, v) in captured {
+                                        eval.env.borrow_mut().define(k, Value::from(v));
+                                    }
+
+                                    // Bind loop variable
+                                    eval.env.borrow_mut().define(var_name_clone, Value::from(item));
+
+                                    match eval.eval_expr(&body_clone) {
+                                        Ok(v) => SendableValue::from(v),
+                                        Err(_) => SendableValue::Unit,
+                                    }
+                                })
+                            }).collect();
+
+                            handles.into_iter()
+                                .map(|h| h.join().unwrap())
+                                .collect()
+                        });
+
+                        Ok(Value::List(results.into_iter().map(Value::from).collect()))
+                    }
+                    _ => Err(EvalError::new("&% requires a list", loc.line, loc.column))
+                }
+            }
+
+            // Parallel join: &= [expr1 expr2 ...]
+            Expr::ParJoin(exprs) => {
+                use crate::runtime::value::SendableValue;
+                use std::thread;
+
+                let captured: HashMap<String, SendableValue> = self.env.borrow()
+                    .get_all()
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect();
+
+                let results: Vec<SendableValue> = thread::scope(|s| {
+                    let handles: Vec<_> = exprs.iter().map(|expr| {
+                        let expr_clone = expr.clone();
+                        let captured = captured.clone();
+
+                        s.spawn(move || {
+                            let mut eval = Evaluator::new();
+
+                            for (k, v) in captured {
+                                eval.env.borrow_mut().define(k, Value::from(v));
+                            }
+
+                            match eval.eval_expr(&expr_clone) {
+                                Ok(v) => SendableValue::from(v),
+                                Err(_) => SendableValue::Unit,
+                            }
+                        })
+                    }).collect();
+
+                    handles.into_iter()
+                        .map(|h| h.join().unwrap())
+                        .collect()
+                });
+
+                Ok(Value::List(results.into_iter().map(Value::from).collect()))
+            }
+
+            // Parallel race: &? [expr1 expr2 ...] - returns first completed
+            Expr::ParRace(exprs) => {
+                use crate::runtime::value::SendableValue;
+                use std::thread;
+                use std::sync::mpsc;
+
+                if exprs.is_empty() {
+                    return Err(EvalError::new("&? requires at least one expression", loc.line, loc.column));
+                }
+
+                let captured: HashMap<String, SendableValue> = self.env.borrow()
+                    .get_all()
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect();
+
+                let (tx, rx) = mpsc::channel::<SendableValue>();
+
+                thread::scope(|s| {
+                    for expr in exprs.iter() {
+                        let expr_clone = expr.clone();
+                        let captured = captured.clone();
+                        let tx = tx.clone();
+
+                        s.spawn(move || {
+                            let mut eval = Evaluator::new();
+
+                            for (k, v) in captured {
+                                eval.env.borrow_mut().define(k, Value::from(v));
+                            }
+
+                            if let Ok(result) = eval.eval_expr(&expr_clone) {
+                                let _ = tx.send(SendableValue::from(result));
+                            }
+                        });
+                    }
+                    drop(tx);
+                });
+
+                rx.recv()
+                    .map(Value::from)
+                    .map_err(|_| EvalError::new("&? all expressions failed", loc.line, loc.column))
+            }
+
+            // Background: &! expr - returns immediately with Unit
+            Expr::Background(expr) => {
+                use crate::runtime::value::SendableValue;
+                use std::thread;
+
+                let expr_clone = (*expr).clone();
+                let captured: HashMap<String, SendableValue> = self.env.borrow()
+                    .get_all()
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect();
+
+                thread::spawn(move || {
+                    let mut eval = Evaluator::new();
+
+                    for (k, v) in captured {
+                        eval.env.borrow_mut().define(k, Value::from(v));
+                    }
+
+                    let _ = eval.eval_expr(&expr_clone);
+                });
+
+                Ok(Value::Unit)
+            }
+
         }
     }
 

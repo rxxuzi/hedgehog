@@ -116,3 +116,13 @@ fn test_channel() {
 
     insta::assert_snapshot!("channel", stdout);
 }
+
+#[test]
+fn test_parallel() {
+    let path = Path::new("examples/parallel.hog");
+    let (stdout, _stderr, code) = run_hog_file(path);
+
+    assert_eq!(code, 0);
+
+    insta::assert_snapshot!("parallel", stdout);
+}

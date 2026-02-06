@@ -1,43 +1,42 @@
 //! Hedgehog Channels
 //!
-//! Buffered channels for concurrent communication.
+//! Thread-safe buffered channels for concurrent communication.
 
-use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use super::value::Value;
 
-/// A buffered channel for passing values
+/// A thread-safe buffered channel for passing values
 #[derive(Debug, Clone)]
 pub struct Channel {
-    buffer: Rc<RefCell<VecDeque<Value>>>,
-    closed: Rc<RefCell<bool>>,
+    buffer: Arc<Mutex<VecDeque<Value>>>,
+    closed: Arc<Mutex<bool>>,
 }
 
 impl Channel {
     /// Create a new unbounded channel
     pub fn new() -> Self {
         Self {
-            buffer: Rc::new(RefCell::new(VecDeque::new())),
-            closed: Rc::new(RefCell::new(false)),
+            buffer: Arc::new(Mutex::new(VecDeque::new())),
+            closed: Arc::new(Mutex::new(false)),
         }
     }
 
     /// Send a value to the channel
     /// Returns Ok(()) on success, Err if channel is closed
     pub fn send(&self, value: Value) -> Result<(), &'static str> {
-        if *self.closed.borrow() {
+        if *self.closed.lock().unwrap() {
             return Err("send on closed channel");
         }
-        self.buffer.borrow_mut().push_back(value);
+        self.buffer.lock().unwrap().push_back(value);
         Ok(())
     }
 
     /// Try to receive a value from the channel
     /// Returns Some(value) if available, None if empty
     pub fn try_recv(&self) -> Option<Value> {
-        self.buffer.borrow_mut().pop_front()
+        self.buffer.lock().unwrap().pop_front()
     }
 
     /// Receive a value from the channel
@@ -45,7 +44,7 @@ impl Channel {
     pub fn recv(&self) -> Result<Value, &'static str> {
         if let Some(value) = self.try_recv() {
             Ok(value)
-        } else if *self.closed.borrow() {
+        } else if *self.closed.lock().unwrap() {
             Err("receive on closed channel")
         } else {
             Err("channel is empty")
@@ -54,22 +53,22 @@ impl Channel {
 
     /// Check if the channel has pending values
     pub fn is_empty(&self) -> bool {
-        self.buffer.borrow().is_empty()
+        self.buffer.lock().unwrap().is_empty()
     }
 
     /// Get the number of pending values
     pub fn len(&self) -> usize {
-        self.buffer.borrow().len()
+        self.buffer.lock().unwrap().len()
     }
 
     /// Close the channel
     pub fn close(&self) {
-        *self.closed.borrow_mut() = true;
+        *self.closed.lock().unwrap() = true;
     }
 
     /// Check if the channel is closed
     pub fn is_closed(&self) -> bool {
-        *self.closed.borrow()
+        *self.closed.lock().unwrap()
     }
 }
 
@@ -82,7 +81,7 @@ impl Default for Channel {
 impl PartialEq for Channel {
     fn eq(&self, other: &Self) -> bool {
         // Channels are equal if they share the same buffer
-        Rc::ptr_eq(&self.buffer, &other.buffer)
+        Arc::ptr_eq(&self.buffer, &other.buffer)
     }
 }
 

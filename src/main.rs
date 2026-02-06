@@ -66,8 +66,9 @@ fn main() {
         if check_only {
             check_file(&path);
         } else if interactive {
-            run_file(&path, script_args);
-            repl();
+            if let Some(evaluator) = run_file_interactive(&path, script_args) {
+                repl_with_evaluator(evaluator);
+            }
         } else {
             run_file(&path, script_args);
         }
@@ -99,13 +100,16 @@ fn print_version() {
 }
 
 fn repl() {
+    repl_with_evaluator(Evaluator::new());
+}
+
+fn repl_with_evaluator(mut evaluator: Evaluator) {
     println!("Hedgehog {} REPL", VERSION);
     println!("Type 'exit' to quit");
     println!();
 
     let stdin = io::stdin();
     let mut stdout = io::stdout();
-    let mut evaluator = Evaluator::new();
 
     loop {
         print!(">>> ");
@@ -158,6 +162,31 @@ fn run_file(path: &str, args: Vec<String>) {
     }
 }
 
+fn run_file_interactive(path: &str, args: Vec<String>) -> Option<Evaluator> {
+    match fs::read_to_string(path) {
+        Ok(content) => {
+            match Parser::parse_source(&content) {
+                Ok(program) => {
+                    let mut evaluator = Evaluator::with_args(args);
+                    if let Err(e) = evaluator.eval_program(&program) {
+                        eprintln!("Error: {}", e);
+                        std::process::exit(1);
+                    }
+                    Some(evaluator)
+                }
+                Err(e) => {
+                    eprintln!("SyntaxError: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("hog: cannot open '{}': {}", path, e);
+            std::process::exit(1);
+        }
+    }
+}
+
 fn run_code(code: &str, args: Vec<String>) {
     match Parser::parse_source(code) {
         Ok(program) => {
@@ -178,7 +207,9 @@ fn check_file(path: &str) {
     match fs::read_to_string(path) {
         Ok(content) => {
             match Parser::parse_source(&content) {
-                Ok(_) => {}
+                Ok(_) => {
+                    println!("{}: OK", path);
+                }
                 Err(e) => {
                     eprintln!("SyntaxError: {}", e);
                     std::process::exit(1);

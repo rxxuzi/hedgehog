@@ -120,6 +120,25 @@ impl Env {
             None
         }
     }
+
+    /// Get all bindings (including parent scopes) - for parallel execution
+    pub fn get_all(&self) -> HashMap<String, Value> {
+        let mut all = if let Some(parent) = &self.parent {
+            parent.borrow().get_all()
+        } else {
+            HashMap::new()
+        };
+
+        // Current scope bindings override parent bindings
+        for (k, v) in &self.bindings {
+            // Skip functions with closures (not Send-safe)
+            if !matches!(v, Value::Func(_)) {
+                all.insert(k.clone(), v.clone());
+            }
+        }
+
+        all
+    }
 }
 
 impl Default for Env {
