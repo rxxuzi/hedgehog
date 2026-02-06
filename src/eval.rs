@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::ast::{BinOp, Expr, Literal, Loc, Node, Pattern, Program, Stmt, Type, UnaryOp};
+use crate::ast::{BinOp, Expr, InterpPart, Literal, Loc, Node, Pattern, Program, Stmt, Type, UnaryOp};
 use crate::env::{Env, FuncDef};
 use crate::exec;
 
@@ -329,6 +329,22 @@ impl Evaluator {
 
         match &expr.node {
             Expr::Lit(lit) => Ok(self.eval_literal(lit)),
+
+            Expr::InterpStr(parts) => {
+                let mut result = String::new();
+                for part in parts {
+                    match part {
+                        InterpPart::Lit(s) => result.push_str(s),
+                        InterpPart::Var(name) => {
+                            let val = self.env.borrow().get(name).ok_or_else(|| {
+                                EvalError::new(format!("Undefined variable: {}", name), loc.line, loc.column)
+                            })?;
+                            result.push_str(&val.to_string());
+                        }
+                    }
+                }
+                Ok(Value::String(result))
+            }
 
             Expr::Var(name) => {
                 self.env.borrow().get(name).ok_or_else(|| {
@@ -1294,7 +1310,7 @@ mod tests {
         eval(input).expect(&format!("Failed to eval: {}", input))
     }
 
-    // === Literals ===
+    // Literals
     #[test]
     fn test_eval_int() {
         assert_eq!(eval_ok("42"), Value::Int(42));
@@ -1326,7 +1342,7 @@ mod tests {
         assert_eq!(eval_ok("none"), Value::None);
     }
 
-    // === Arithmetic ===
+    // Arithmetic
     #[test]
     fn test_eval_add() {
         assert_eq!(eval_ok(".+ 1 2"), Value::Int(3));
@@ -1372,7 +1388,7 @@ mod tests {
         assert_eq!(eval_ok(".+ \"hello\" \" world\""), Value::String("hello world".to_string()));
     }
 
-    // === Comparison ===
+    // Comparison
     #[test]
     fn test_eval_eq() {
         assert_eq!(eval_ok(".= 1 1"), Value::Bool(true));
@@ -1411,7 +1427,7 @@ mod tests {
         assert_eq!(eval_ok(".>= 1 2"), Value::Bool(false));
     }
 
-    // === Logical ===
+    // Logical
     #[test]
     fn test_eval_and() {
         assert_eq!(eval_ok(".& true true"), Value::Bool(true));
@@ -1430,7 +1446,7 @@ mod tests {
         assert_eq!(eval_ok(".! false"), Value::Bool(true));
     }
 
-    // === Variables ===
+    // Variables
     #[test]
     fn test_eval_bind_and_use() {
         assert_eq!(eval_ok("^= x 42\n$x"), Value::Int(42));
@@ -1441,7 +1457,7 @@ mod tests {
         assert_eq!(eval_ok("^= x 10\n^= y 20\n.+ $x $y"), Value::Int(30));
     }
 
-    // === List ===
+    // List
     #[test]
     fn test_eval_list() {
         assert_eq!(eval_ok("[1 2 3]"), Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
@@ -1463,7 +1479,7 @@ mod tests {
         }
     }
 
-    // === Conditional ===
+    // Conditional
     #[test]
     fn test_eval_cond_true() {
         assert_eq!(eval_ok("?: true 1 2"), Value::Int(1));
@@ -1479,7 +1495,7 @@ mod tests {
         assert_eq!(eval_ok("?: | false -> 1 | true -> 2 | _ -> 3"), Value::Int(2));
     }
 
-    // === Function ===
+    // Function
     #[test]
     fn test_eval_function() {
         assert_eq!(eval_ok("|= Double [x] .* $x 2\n(Double 5)"), Value::Int(10));
@@ -1501,7 +1517,7 @@ mod tests {
         assert_eq!(eval_ok("^= double |> [x] .* $x 2\n($double 5)"), Value::Int(10));
     }
 
-    // === Iteration ===
+    // Iteration
     #[test]
     fn test_eval_map() {
         let result = eval_ok("%> [1 2 3] [x] .* $x 2");
@@ -1526,7 +1542,7 @@ mod tests {
         assert_eq!(result, Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)]));
     }
 
-    // === Builtin functions ===
+    // Builtin functions
     #[test]
     fn test_eval_builtin_len() {
         assert_eq!(eval_ok("(len [1 2 3])"), Value::Int(3));
@@ -1547,7 +1563,7 @@ mod tests {
         assert_eq!(eval_ok("(rev [1 2 3])"), Value::List(vec![Value::Int(3), Value::Int(2), Value::Int(1)]));
     }
 
-    // === Option/Result ===
+    // Option/Result
     #[test]
     fn test_eval_some() {
         assert_eq!(eval_ok("(some 42)"), Value::Some(Box::new(Value::Int(42))));
@@ -1575,7 +1591,7 @@ mod tests {
         assert_eq!(eval_ok("(unwrap-or (some 42) 0)"), Value::Int(42));
     }
 
-    // === Pattern Matching ===
+    // Pattern Matching
     #[test]
     fn test_eval_match_literal() {
         let code = "?? 2 | 1 -> \"one\" | 2 -> \"two\" | _ -> \"other\"";
@@ -1594,38 +1610,38 @@ mod tests {
         assert_eq!(eval_ok(code), Value::Int(84));
     }
 
-    // === Block ===
+    // Block
     #[test]
     fn test_eval_block() {
         assert_eq!(eval_ok("{ ^= x 1; ^= y 2; .+ $x $y }"), Value::Int(3));
     }
 
-    // === Division by zero ===
+    // Division by zero
     #[test]
     fn test_eval_div_by_zero() {
         assert!(eval("./ 1 0").is_err());
     }
 
-    // === Undefined variable ===
+    // Undefined variable
     #[test]
     fn test_eval_undefined_var() {
         assert!(eval("$undefined").is_err());
     }
 
-    // === Type mismatch ===
+    // Type mismatch
     #[test]
     fn test_eval_type_mismatch() {
         assert!(eval(".+ 1 \"hello\"").is_err());
     }
 
-    // === v0.2.2: Pipeline ===
+    // v0.2.2: Pipeline
     #[test]
     fn test_eval_pipeline() {
         // Simple pipeline: get head of list
         assert_eq!(eval_ok(":: [1 2 3] (head) =="), Value::Int(1));
     }
 
-    // === v0.2.2: VarApply ===
+    // v0.2.2: VarApply
     #[test]
     fn test_eval_var_apply() {
         // Variadic apply: concat lists
@@ -1641,7 +1657,7 @@ mod tests {
         }
     }
 
-    // === v0.2.2: NestAccess ===
+    // v0.2.2: NestAccess
     #[test]
     fn test_eval_nest_access() {
         // Nested access into record (using string for field name)
@@ -1656,7 +1672,7 @@ mod tests {
         assert_eq!(eval_ok(code), Value::Int(20));
     }
 
-    // === v0.2.3: Typed Functions ===
+    // v0.2.3: Typed Functions
     #[test]
     fn test_eval_typed_func() {
         let code = "|: Add [a @i b @i] @i .+ $a $b; (Add 3 4)";

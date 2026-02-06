@@ -7,7 +7,7 @@ use crate::eval::{EvalError, Value};
 /// Call a built-in function
 pub fn call_builtin(name: &str, args: Vec<Value>, line: usize, col: usize) -> Result<Value, EvalError> {
     match name {
-        // === List operations ===
+        // List operations
         "len" => {
             check_arity(name, &args, 1, line, col)?;
             match &args[0] {
@@ -212,7 +212,7 @@ pub fn call_builtin(name: &str, args: Vec<Value>, line: usize, col: usize) -> Re
             }
         }
 
-        // === String operations ===
+        // String operations
         "split" => {
             check_arity(name, &args, 2, line, col)?;
             match (&args[0], &args[1]) {
@@ -309,7 +309,7 @@ pub fn call_builtin(name: &str, args: Vec<Value>, line: usize, col: usize) -> Re
             }
         }
 
-        // === Type conversion ===
+        // Type conversion
         "int" => {
             check_arity(name, &args, 1, line, col)?;
             match &args[0] {
@@ -358,7 +358,7 @@ pub fn call_builtin(name: &str, args: Vec<Value>, line: usize, col: usize) -> Re
             Ok(Value::Bool(truthy))
         }
 
-        // === Option/Result ===
+        // Option/Result
         "some" => {
             check_arity(name, &args, 1, line, col)?;
             Ok(Value::Some(Box::new(args[0].clone())))
@@ -416,7 +416,7 @@ pub fn call_builtin(name: &str, args: Vec<Value>, line: usize, col: usize) -> Re
             }
         }
 
-        // === Unknown ===
+        // Unknown
         _ => Err(EvalError::new(format!("Unknown built-in: {}", name), line, col))
     }
 }
@@ -440,7 +440,7 @@ mod tests {
         call_builtin(name, args, 1, 1)
     }
 
-    // === List operations ===
+    // List operations
     #[test]
     fn test_len_list() {
         let result = call("len", vec![Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])]);
@@ -540,7 +540,7 @@ mod tests {
         assert_eq!(result.unwrap(), Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
     }
 
-    // === String operations ===
+    // String operations
     #[test]
     fn test_split() {
         let result = call("split", vec![
@@ -630,7 +630,7 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(true));
     }
 
-    // === Type conversion ===
+    // Type conversion
     #[test]
     fn test_int_from_float() {
         let result = call("int", vec![Value::Float(3.7)]);
@@ -676,7 +676,7 @@ mod tests {
         assert_eq!(call("bool", vec![Value::None]).unwrap(), Value::Bool(false));
     }
 
-    // === Option/Result ===
+    // Option/Result
     #[test]
     fn test_some() {
         let result = call("some", vec![Value::Int(42)]);
@@ -749,7 +749,7 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Int(0));
     }
 
-    // === Arity errors ===
+    // Arity errors
     #[test]
     fn test_arity_error() {
         let result = call("len", vec![]);

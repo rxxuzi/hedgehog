@@ -1,15 +1,7 @@
 //! Hedgehog - A keyword-less shell scripting language
 
-pub mod ast;
-pub mod builtin;
-pub mod env;
-pub mod eval;
-pub mod exec;
-pub mod lexer;
-pub mod parser;
-
-use eval::Evaluator;
-use parser::Parser;
+use hedgehog::eval::{Evaluator, Value};
+use hedgehog::parser::Parser;
 use std::env as std_env;
 use std::fs;
 use std::io::{self, BufRead, Write};
@@ -138,7 +130,7 @@ fn repl() {
                     Ok(program) => {
                         match evaluator.eval_program(&program) {
                             Ok(value) => {
-                                if value != eval::Value::Unit {
+                                if value != Value::Unit {
                                     println!("{}", value);
                                 }
                             }

@@ -1,6 +1,6 @@
 [package]
 name = "hedgehog"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 authors = ["rxxuzi"]
 description = "A keyword-less shell scripting language"
@@ -10,14 +10,19 @@ license = "MIT"
 keywords = ["shell", "scripting", "language", "interpreter", "berry"]
 categories = ["command-line-utilities", "development-tools"]
 
-[dependencies]
-glob = "0.3"
-
-[dev-dependencies]
+[lib]
+name = "hedgehog"
+path = "src/lib.rs"
 
 [[bin]]
 name = "hog"
 path = "src/main.rs"
+
+[dependencies]
+glob = "0.3"
+
+[dev-dependencies]
+insta = "1.41"
 
 [profile.release]
 opt-level = 3

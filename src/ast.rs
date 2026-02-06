@@ -140,11 +140,23 @@ pub enum Pattern {
     Err(Box<Pattern>),
 }
 
+/// Part of an interpolated string (AST level)
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpPart {
+    /// Literal text
+    Lit(String),
+    /// Variable reference
+    Var(String),
+}
+
 /// Expression
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     /// Literal value
     Lit(Literal),
+
+    /// Interpolated string: "Hello, $name!"
+    InterpStr(Vec<InterpPart>),
 
     /// Variable reference: $x
     Var(String),

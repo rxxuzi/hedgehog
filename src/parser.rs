@@ -3,7 +3,7 @@
 //! Parses tokens into an Abstract Syntax Tree.
 
 use crate::ast::*;
-use crate::lexer::{Lexer, SpannedToken, Token};
+use crate::lexer::{Lexer, SpannedToken, StringPart, Token};
 
 /// Parser error
 #[derive(Debug, Clone)]
@@ -302,6 +302,11 @@ impl Parser {
             Token::String(s) => {
                 self.advance();
                 Ok(Node::new(Expr::Lit(Literal::String(s)), loc))
+            }
+            Token::InterpString(parts) => {
+                self.advance();
+                let ast_parts = self.convert_interp_parts(parts);
+                Ok(Node::new(Expr::InterpStr(ast_parts), loc))
             }
             Token::RawString(s) => {
                 self.advance();
@@ -1343,6 +1348,14 @@ impl Parser {
         }
     }
 
+    /// Convert lexer StringPart to AST InterpPart
+    fn convert_interp_parts(&self, parts: Vec<StringPart>) -> Vec<InterpPart> {
+        parts.into_iter().map(|part| match part {
+            StringPart::Lit(s) => InterpPart::Lit(s),
+            StringPart::Var(name) => InterpPart::Var(name),
+        }).collect()
+    }
+
     /// Parse expression list until terminator
     fn parse_expr_list_until(&mut self, terminator: &Token) -> Result<Vec<Node<Expr>>, ParseError> {
         let mut exprs = Vec::new();
@@ -1383,7 +1396,7 @@ mod tests {
         }
     }
 
-    // === Binding ===
+    // Binding
     #[test]
     fn test_parse_bind() {
         let prog = parse_ok("^= x 42");
@@ -1413,7 +1426,7 @@ mod tests {
         }
     }
 
-    // === Output ===
+    // Output
     #[test]
     fn test_parse_output() {
         let prog = parse_ok("~> \"hello\"");
@@ -1442,7 +1455,7 @@ mod tests {
         }
     }
 
-    // === Functions ===
+    // Functions
     #[test]
     fn test_parse_function() {
         let prog = parse_ok("|= Add [a b] .+ $a $b");
@@ -1479,7 +1492,7 @@ mod tests {
         }
     }
 
-    // === Literals ===
+    // Literals
     #[test]
     fn test_parse_int() {
         let expr = parse_expr("42");
@@ -1522,7 +1535,7 @@ mod tests {
         assert_eq!(expr, Expr::Lit(Literal::None));
     }
 
-    // === Variables ===
+    // Variables
     #[test]
     fn test_parse_var() {
         let expr = parse_expr("$x");
@@ -1535,7 +1548,7 @@ mod tests {
         assert_eq!(expr, Expr::EnvVar("PATH".to_string()));
     }
 
-    // === List ===
+    // List
     #[test]
     fn test_parse_list() {
         let prog = parse_ok("^= xs [1 2 3]");
@@ -1560,7 +1573,7 @@ mod tests {
         }
     }
 
-    // === Record ===
+    // Record
     #[test]
     fn test_parse_record() {
         let expr = parse_expr("{name: \"Alice\", age: 30}");
@@ -1583,7 +1596,7 @@ mod tests {
         }
     }
 
-    // === Conditional ===
+    // Conditional
     #[test]
     fn test_parse_cond() {
         let prog = parse_ok("?: true \"yes\" \"no\"");
@@ -1601,7 +1614,7 @@ mod tests {
         }
     }
 
-    // === Arithmetic ===
+    // Arithmetic
     #[test]
     fn test_parse_add() {
         let expr = parse_expr(".+ 1 2");
@@ -1625,7 +1638,7 @@ mod tests {
         }
     }
 
-    // === Comparison ===
+    // Comparison
     #[test]
     fn test_parse_eq() {
         let expr = parse_expr(".= 1 1");
@@ -1644,7 +1657,7 @@ mod tests {
         }
     }
 
-    // === Logical ===
+    // Logical
     #[test]
     fn test_parse_and() {
         let expr = parse_expr(".& true false");
@@ -1663,7 +1676,7 @@ mod tests {
         }
     }
 
-    // === Iteration ===
+    // Iteration
     #[test]
     fn test_parse_map() {
         let expr = parse_expr("%> $xs [x] .* $x 2");
@@ -1712,7 +1725,7 @@ mod tests {
         }
     }
 
-    // === Loop ===
+    // Loop
     #[test]
     fn test_parse_loop() {
         let expr = parse_expr("?@ true 1");
@@ -1722,7 +1735,7 @@ mod tests {
         }
     }
 
-    // === Function Call ===
+    // Function Call
     #[test]
     fn test_parse_call() {
         let expr = parse_expr("(Add 1 2)");
@@ -1747,7 +1760,7 @@ mod tests {
         }
     }
 
-    // === Option/Result ===
+    // Option/Result
     #[test]
     fn test_parse_some() {
         let expr = parse_expr("(some 42)");
@@ -1775,7 +1788,7 @@ mod tests {
         }
     }
 
-    // === Block ===
+    // Block
     #[test]
     fn test_parse_block() {
         let expr = parse_expr("{ ^= x 1; ^= y 2; .+ $x $y }");
@@ -1785,7 +1798,7 @@ mod tests {
         }
     }
 
-    // === Exec ===
+    // Exec
     #[test]
     fn test_parse_exec() {
         let expr = parse_expr("!! `echo hello`");
@@ -1797,14 +1810,14 @@ mod tests {
         }
     }
 
-    // === Multiple statements ===
+    // Multiple statements
     #[test]
     fn test_parse_multiple_statements() {
         let prog = parse_ok("^= x 1\n^= y 2\n~> .+ $x $y");
         assert_eq!(prog.stmts.len(), 3);
     }
 
-    // === Error cases ===
+    // Error cases
     #[test]
     fn test_parse_error_unclosed_bracket() {
         assert!(parse("[1 2 3").is_err());
@@ -1815,7 +1828,7 @@ mod tests {
         assert!(parse("(Add 1 2").is_err());
     }
 
-    // === Data Operations (v0.2.2) ===
+    // Data Operations (v0.2.2)
     #[test]
     fn test_parse_pipeline() {
         // Simple pipeline with function calls
@@ -1873,7 +1886,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // === v0.2.3: Typed Functions ===
+    // v0.2.3: Typed Functions
     #[test]
     fn test_parse_typed_func() {
         let prog = parse_ok("|: Add [a @i b @i] @i .+ $a $b");

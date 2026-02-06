@@ -209,7 +209,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    // === Unix only tests ===
+    // Unix only tests
     #[test]
     #[cfg(not(windows))]
     fn test_exec_echo() {
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(result, Ok("hello".to_string()));
     }
 
-    // === Windows only tests ===
+    // Windows only tests
     #[test]
     #[cfg(windows)]
     fn test_exec_echo_windows() {
@@ -278,7 +278,7 @@ mod tests {
         assert!(!command_exists("nonexistent_command_12345"));
     }
 
-    // === Cross-platform tests ===
+    // Cross-platform tests
     #[test]
     fn test_exec_nonexistent_command() {
         let result = exec_command(&["nonexistent_command_xyz"]);
@@ -318,7 +318,7 @@ mod tests {
         std::env::remove_var("HEDGEHOG_TEST_SET");
     }
 
-    // === File I/O tests ===
+    // File I/O tests
     #[test]
     fn test_write_and_read_file() {
         let mut test_path = std::env::temp_dir();
@@ -366,7 +366,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // === Glob tests ===
+    // Glob tests
     #[test]
     fn test_glob_invalid_pattern() {
         let result = glob_expand("[invalid");

@@ -6,10 +6,19 @@ use std::fmt;
 use std::iter::Peekable;
 use std::str::Chars;
 
+/// Part of an interpolated string
+#[derive(Debug, Clone, PartialEq)]
+pub enum StringPart {
+    /// Literal text
+    Lit(String),
+    /// Variable reference: $name
+    Var(String),
+}
+
 /// Token types for Hedgehog
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    // === Berries (symbolic operators) ===
+    // Berries (symbolic operators)
 
     // Binding
     Bind,       // ^=
@@ -109,7 +118,7 @@ pub enum Token {
     // Definition
     StructDef,  // ^-
 
-    // === Single-char tokens ===
+    // Single-char tokens
     Dollar,     // $
     Star,       // *
     Percent,    // %
@@ -133,6 +142,7 @@ pub enum Token {
     Int(i64),
     Float(f64),
     String(String),
+    InterpString(Vec<StringPart>),
     RawString(String),
     CommandString(String),
 
@@ -287,6 +297,95 @@ impl<'a> Lexer<'a> {
         }
 
         Ok(result)
+    }
+
+    /// Read an interpolated string (double-quoted)
+    /// Handles $var interpolation
+    fn read_interp_string(&mut self) -> Result<Vec<StringPart>, LexerError> {
+        let start_span = self.current_span();
+        let mut parts: Vec<StringPart> = Vec::new();
+        let mut current_lit = String::new();
+
+        loop {
+            match self.peek() {
+                Some(&'"') => {
+                    self.advance();
+                    break;
+                }
+                Some(&'\\') => {
+                    self.advance();
+                    match self.advance() {
+                        Some('n') => current_lit.push('\n'),
+                        Some('t') => current_lit.push('\t'),
+                        Some('r') => current_lit.push('\r'),
+                        Some('\\') => current_lit.push('\\'),
+                        Some('"') => current_lit.push('"'),
+                        Some('\'') => current_lit.push('\''),
+                        Some('$') => current_lit.push('$'),
+                        Some('0') => current_lit.push('\0'),
+                        Some(c) => {
+                            return Err(LexerError {
+                                message: format!("Invalid escape sequence: \\{}", c),
+                                span: self.current_span(),
+                            });
+                        }
+                        None => {
+                            return Err(LexerError {
+                                message: "Unterminated string".to_string(),
+                                span: start_span,
+                            });
+                        }
+                    }
+                }
+                Some(&'$') => {
+                    self.advance();
+                    // Check what follows $
+                    match self.peek() {
+                        Some(&c) if c.is_alphabetic() || c == '_' => {
+                            // $var form
+                            if !current_lit.is_empty() {
+                                parts.push(StringPart::Lit(std::mem::take(&mut current_lit)));
+                            }
+                            let var = self.read_interp_var();
+                            parts.push(StringPart::Var(var));
+                        }
+                        _ => {
+                            // Just a literal $
+                            current_lit.push('$');
+                        }
+                    }
+                }
+                Some(_) => {
+                    current_lit.push(self.advance().unwrap());
+                }
+                None => {
+                    return Err(LexerError {
+                        message: "Unterminated string".to_string(),
+                        span: start_span,
+                    });
+                }
+            }
+        }
+
+        // Push remaining literal if any
+        if !current_lit.is_empty() {
+            parts.push(StringPart::Lit(current_lit));
+        }
+
+        Ok(parts)
+    }
+
+    /// Read a variable name for interpolation ($var)
+    fn read_interp_var(&mut self) -> String {
+        let mut name = String::new();
+        while let Some(&c) = self.peek() {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                name.push(self.advance().unwrap());
+            } else {
+                break;
+            }
+        }
+        name
     }
 
     fn read_command_string(&mut self) -> Result<String, LexerError> {
@@ -567,7 +666,7 @@ impl<'a> Lexer<'a> {
             // Newline
             '\n' => Token::Newline,
 
-            // === Multi-char berries (check longest first) ===
+            // Multi-char berries (check longest first)
 
             // ^ berries (definition)
             '^' => match self.peek() {
@@ -859,7 +958,7 @@ impl<'a> Lexer<'a> {
                 Token::TypeLit(type_name)
             },
 
-            // === Single char tokens ===
+            // Single char tokens
             ';' => Token::Semicolon,
             ',' => Token::Comma,
             '_' => Token::Underscore,
@@ -870,10 +969,20 @@ impl<'a> Lexer<'a> {
             '{' => Token::LBrace,
             '}' => Token::RBrace,
 
-            // === Strings ===
+            // Strings
             '"' => {
-                let s = self.read_string('"')?;
-                Token::String(s)
+                let parts = self.read_interp_string()?;
+                // Optimize: if only one literal part, return plain String
+                if parts.len() == 1 {
+                    if let StringPart::Lit(s) = &parts[0] {
+                        return Ok(SpannedToken { token: Token::String(s.clone()), span });
+                    }
+                }
+                if parts.is_empty() {
+                    Token::String(String::new())
+                } else {
+                    Token::InterpString(parts)
+                }
             }
             '\'' => {
                 let s = self.read_string('\'')?;
@@ -884,10 +993,10 @@ impl<'a> Lexer<'a> {
                 Token::CommandString(s)
             }
 
-            // === Numbers ===
+            // Numbers
             c if c.is_ascii_digit() => self.read_number(c)?,
 
-            // === Identifiers ===
+            // Identifiers
             c if c.is_alphabetic() || c == '_' => self.read_identifier(c),
 
             // Unknown
@@ -943,7 +1052,7 @@ mod tests {
             .collect()
     }
 
-    // === Binding ===
+    // Binding
     #[test]
     fn test_bind() {
         assert_eq!(tokenize("^= x 42"), vec![
@@ -963,7 +1072,7 @@ mod tests {
         ]);
     }
 
-    // === Functions ===
+    // Functions
     #[test]
     fn test_function() {
         assert_eq!(tokenize("|= Add [a b] .+ $a $b"), vec![
@@ -1031,7 +1140,7 @@ mod tests {
         ]);
     }
 
-    // === Output ===
+    // Output
     #[test]
     fn test_output() {
         assert_eq!(tokenize("~> \"hello\""), vec![
@@ -1056,7 +1165,7 @@ mod tests {
         ]);
     }
 
-    // === Control ===
+    // Control
     #[test]
     fn test_cond() {
         assert_eq!(tokenize("?: true 1 0"), vec![
@@ -1102,7 +1211,7 @@ mod tests {
         ]);
     }
 
-    // === Iteration ===
+    // Iteration
     #[test]
     fn test_map() {
         assert_eq!(tokenize("%> $xs [x] .* $x 2"), vec![
@@ -1177,7 +1286,7 @@ mod tests {
         ]);
     }
 
-    // === Arithmetic ===
+    // Arithmetic
     #[test]
     fn test_arithmetic() {
         assert_eq!(tokenize(".+ 1 2"), vec![Token::Add, Token::Int(1), Token::Int(2)]);
@@ -1188,7 +1297,7 @@ mod tests {
         assert_eq!(tokenize(".^ 2 8"), vec![Token::Pow, Token::Int(2), Token::Int(8)]);
     }
 
-    // === Comparison ===
+    // Comparison
     #[test]
     fn test_comparison() {
         assert_eq!(tokenize(".= 1 1"), vec![Token::Eq, Token::Int(1), Token::Int(1)]);
@@ -1199,7 +1308,7 @@ mod tests {
         assert_eq!(tokenize(".>= 2 1"), vec![Token::Gte, Token::Int(2), Token::Int(1)]);
     }
 
-    // === Logical ===
+    // Logical
     #[test]
     fn test_logical() {
         assert_eq!(tokenize(".& true false"), vec![Token::And, Token::True, Token::False]);
@@ -1207,7 +1316,7 @@ mod tests {
         assert_eq!(tokenize(".! true"), vec![Token::Not, Token::True]);
     }
 
-    // === Parallel ===
+    // Parallel
     #[test]
     fn test_parallel() {
         assert_eq!(tokenize("&% $xs [x] body"), vec![
@@ -1221,7 +1330,7 @@ mod tests {
         assert_eq!(tokenize("&?"), vec![Token::Race]);
     }
 
-    // === Command ===
+    // Command
     #[test]
     fn test_exec() {
         assert_eq!(tokenize("!! ls -la"), vec![
@@ -1231,7 +1340,7 @@ mod tests {
         ]);
     }
 
-    // === Strings ===
+    // Strings
     #[test]
     fn test_string() {
         assert_eq!(tokenize("\"hello world\""), vec![
@@ -1260,7 +1369,7 @@ mod tests {
         ]);
     }
 
-    // === Numbers ===
+    // Numbers
     #[test]
     fn test_int() {
         assert_eq!(tokenize("42"), vec![Token::Int(42)]);
@@ -1294,7 +1403,7 @@ mod tests {
         assert_eq!(tokenize("0o10"), vec![Token::Int(8)]);
     }
 
-    // === Identifiers ===
+    // Identifiers
     #[test]
     fn test_identifier() {
         assert_eq!(tokenize("foo"), vec![Token::Ident("foo".to_string())]);
@@ -1314,7 +1423,7 @@ mod tests {
         assert_eq!(tokenize("unwrap!"), vec![Token::Ident("unwrap!".to_string())]);
     }
 
-    // === Keywords ===
+    // Keywords
     #[test]
     fn test_keywords() {
         assert_eq!(tokenize("true"), vec![Token::True]);
@@ -1322,7 +1431,7 @@ mod tests {
         assert_eq!(tokenize("none"), vec![Token::None]);
     }
 
-    // === Comments ===
+    // Comments
     #[test]
     fn test_comment() {
         assert_eq!(tokenize("42 # this is a comment"), vec![Token::Int(42)]);
@@ -1333,7 +1442,7 @@ mod tests {
         assert_eq!(tokenize("# comment\n42"), vec![Token::Int(42)]);
     }
 
-    // === List ===
+    // List
     #[test]
     fn test_list() {
         assert_eq!(tokenize("[1 2 3]"), vec![
@@ -1345,7 +1454,7 @@ mod tests {
         ]);
     }
 
-    // === Record ===
+    // Record
     #[test]
     fn test_record() {
         assert_eq!(tokenize("{a: 1, b: 2}"), vec![
@@ -1361,7 +1470,7 @@ mod tests {
         ]);
     }
 
-    // === Type Cast ===
+    // Type Cast
     #[test]
     fn test_type_cast() {
         assert_eq!(tokenize(":> 42 @t"), vec![
@@ -1371,7 +1480,7 @@ mod tests {
         ]);
     }
 
-    // === Type Check ===
+    // Type Check
     #[test]
     fn test_type_check() {
         assert_eq!(tokenize(":? $x @i"), vec![
@@ -1381,7 +1490,7 @@ mod tests {
         ]);
     }
 
-    // === Module ===
+    // Module
     #[test]
     fn test_lib_import() {
         assert_eq!(tokenize("/+ std"), vec![
@@ -1405,7 +1514,7 @@ mod tests {
         assert_eq!(tokenize("/."), vec![Token::RelImport]);
     }
 
-    // === Input ===
+    // Input
     #[test]
     fn test_stdin() {
         assert_eq!(tokenize("<~"), vec![Token::Stdin]);
@@ -1427,7 +1536,7 @@ mod tests {
         ]);
     }
 
-    // === Output ===
+    // Output
     #[test]
     fn test_file_write() {
         assert_eq!(tokenize("~+ \"out.txt\" \"hello\""), vec![
@@ -1446,7 +1555,7 @@ mod tests {
         ]);
     }
 
-    // === Struct Definition ===
+    // Struct Definition
     #[test]
     fn test_struct_def() {
         assert_eq!(tokenize("^- Point"), vec![
@@ -1455,7 +1564,7 @@ mod tests {
         ]);
     }
 
-    // === Channel ===
+    // Channel
     #[test]
     fn test_channel_recv() {
         assert_eq!(tokenize("<- $ch"), vec![
@@ -1464,7 +1573,7 @@ mod tests {
         ]);
     }
 
-    // === Option/Result ===
+    // Option/Result
     #[test]
     fn test_option_functions() {
         // some?, none?, ok?, err? は識別子として認識される
@@ -1477,7 +1586,7 @@ mod tests {
         ]);
     }
 
-    // === Newline ===
+    // Newline
     #[test]
     fn test_newline() {
         let tokens = tokenize_all("a\nb");
@@ -1489,7 +1598,7 @@ mod tests {
         ]);
     }
 
-    // === Data Operations (v0.2.2) ===
+    // Data Operations (v0.2.2)
     #[test]
     fn test_pipeline() {
         assert_eq!(tokenize(":: $nums"), vec![
@@ -1545,7 +1654,7 @@ mod tests {
         ]);
     }
 
-    // === v0.2.4: Reference Extensions ===
+    // v0.2.4: Reference Extensions
     #[test]
     fn test_global_ref() {
         assert_eq!(tokenize("$>config"), vec![
@@ -1577,5 +1686,33 @@ mod tests {
     #[test]
     fn test_arg_count() {
         assert_eq!(tokenize("$@#"), vec![Token::ArgCount]);
+    }
+
+    // String Interpolation
+    #[test]
+    fn test_plain_string() {
+        assert_eq!(tokenize("\"hello\""), vec![Token::String("hello".to_string())]);
+    }
+
+    #[test]
+    fn test_interp_var() {
+        assert_eq!(tokenize("\"Hello, $name!\""), vec![
+            Token::InterpString(vec![
+                StringPart::Lit("Hello, ".to_string()),
+                StringPart::Var("name".to_string()),
+                StringPart::Lit("!".to_string()),
+            ])
+        ]);
+    }
+
+    #[test]
+    fn test_interp_escape() {
+        assert_eq!(tokenize("\"\\$100\""), vec![Token::String("$100".to_string())]);
+    }
+
+    #[test]
+    fn test_interp_dollar_number() {
+        // $1 should not be a variable (variable must start with letter/underscore)
+        assert_eq!(tokenize("\"$100\""), vec![Token::String("$100".to_string())]);
     }
 }

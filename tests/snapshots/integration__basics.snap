@@ -1,0 +1,16 @@
+---
+source: tests/integration.rs
+assertion_line: 107
+expression: stdout
+---
+Hello, Alice!
+Age: 30
+30
+12
+[1 2 3 4 5]
+[2 4 6 8 10]
+[3 4 5]
+15
+adult
+42
+Bob
