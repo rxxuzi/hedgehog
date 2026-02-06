@@ -118,6 +118,17 @@ pub enum Token {
     // Definition
     StructDef,  // ^-
 
+    // Scope
+    LetIn,      // ;=
+    Drop,       // ;;
+
+    // Command
+    CmdCheck,   // !?
+
+    // Channel
+    Select,     // <>
+    Broadcast,  // ><
+
     // Single-char tokens
     Dollar,     // $
     Star,       // *
@@ -798,6 +809,7 @@ impl<'a> Lexer<'a> {
             // ! berries
             '!' => match self.peek() {
                 Some('!') => { self.advance(); Token::Exec }
+                Some('?') => { self.advance(); Token::CmdCheck }
                 _ => {
                     return Err(LexerError {
                         message: format!("Unexpected character after '!': {:?}", self.peek()),
@@ -834,6 +846,7 @@ impl<'a> Lexer<'a> {
                 Some('+') => { self.advance(); Token::FileRead }
                 Some('*') => { self.advance(); Token::BinaryRead }
                 Some('-') => { self.advance(); Token::ChanRecv }
+                Some('>') => { self.advance(); Token::Select }
                 _ => {
                     return Err(LexerError {
                         message: format!("Unexpected character after '<': {:?}", self.peek()),
@@ -858,6 +871,17 @@ impl<'a> Lexer<'a> {
                 _ => {
                     // Could be a command option like -la
                     self.read_identifier('-')
+                }
+            },
+
+            // > berries
+            '>' => match self.peek() {
+                Some('<') => { self.advance(); Token::Broadcast }
+                _ => {
+                    return Err(LexerError {
+                        message: format!("Unexpected character after '>': {:?}", self.peek()),
+                        span,
+                    });
                 }
             },
 
@@ -958,8 +982,14 @@ impl<'a> Lexer<'a> {
                 Token::TypeLit(type_name)
             },
 
+            // ; berries (scope)
+            ';' => match self.peek() {
+                Some('=') => { self.advance(); Token::LetIn }
+                Some(';') => { self.advance(); Token::Drop }
+                _ => Token::Semicolon
+            },
+
             // Single char tokens
-            ';' => Token::Semicolon,
             ',' => Token::Comma,
             '_' => Token::Underscore,
             '(' => Token::LParen,
@@ -1714,5 +1744,41 @@ mod tests {
     fn test_interp_dollar_number() {
         // $1 should not be a variable (variable must start with letter/underscore)
         assert_eq!(tokenize("\"$100\""), vec![Token::String("$100".to_string())]);
+    }
+
+    // v0.2.6: Scope and Command
+    #[test]
+    fn test_let_in() {
+        assert_eq!(tokenize(";= x 10"), vec![
+            Token::LetIn,
+            Token::Ident("x".to_string()),
+            Token::Int(10),
+        ]);
+    }
+
+    #[test]
+    fn test_drop() {
+        assert_eq!(tokenize(";; x"), vec![
+            Token::Drop,
+            Token::Ident("x".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_cmd_check() {
+        assert_eq!(tokenize("!? \"git\""), vec![
+            Token::CmdCheck,
+            Token::String("git".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_select() {
+        assert_eq!(tokenize("<>"), vec![Token::Select]);
+    }
+
+    #[test]
+    fn test_broadcast() {
+        assert_eq!(tokenize("><"), vec![Token::Broadcast]);
     }
 }

@@ -271,6 +271,13 @@ impl Parser {
                 Ok(Node::new(Stmt::RelImport(path), loc))
             }
 
+            // Drop: ;; name
+            Token::Drop => {
+                self.advance();
+                let name = self.parse_ident()?;
+                Ok(Node::new(Stmt::Drop(name), loc))
+            }
+
             // Expression statement
             _ => {
                 let expr = self.parse_expr()?;
@@ -547,6 +554,57 @@ impl Parser {
                 let expr = self.parse_expr()?;
                 let path = self.parse_expr()?;
                 Ok(Node::new(Expr::NestAccess(Box::new(expr), Box::new(path)), loc))
+            }
+
+            // Let-in: ;= name value body (3 children)
+            Token::LetIn => {
+                self.advance();
+                let name = self.parse_ident()?;
+                let value = self.parse_expr()?;
+                let body = self.parse_expr()?;
+                Ok(Node::new(Expr::LetIn(name, Box::new(value), Box::new(body)), loc))
+            }
+
+            // Command check: !? "cmd" (1 child)
+            Token::CmdCheck => {
+                self.advance();
+                let cmd = self.parse_expr()?;
+                Ok(Node::new(Expr::CmdCheck(Box::new(cmd)), loc))
+            }
+
+            // Select: <> | <- ch -> [x] body | ...
+            Token::Select => {
+                self.advance();
+                self.skip_newlines();
+                let mut branches = Vec::new();
+
+                while self.check(&Token::Bar) {
+                    self.advance(); // consume |
+                    self.skip_newlines();
+
+                    // Expect <- channel
+                    self.expect(&Token::ChanRecv)?;
+                    let channel = self.parse_expr()?;
+
+                    // Expect -> [var] body
+                    self.expect(&Token::Arrow)?;
+                    let params = self.parse_param_list()?;
+                    let var = params.into_iter().next().unwrap_or_else(|| "_".to_string());
+                    let body = self.parse_expr()?;
+
+                    branches.push(SelectBranch { channel, var, body });
+                    self.skip_newlines();
+                }
+
+                Ok(Node::new(Expr::Select(branches), loc))
+            }
+
+            // Broadcast: >< channels message (2 children)
+            Token::Broadcast => {
+                self.advance();
+                let channels = self.parse_expr()?;
+                let message = self.parse_expr()?;
+                Ok(Node::new(Expr::Broadcast(Box::new(channels), Box::new(message)), loc))
             }
 
             // Lambda: |> [args] body

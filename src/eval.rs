@@ -320,6 +320,12 @@ impl Evaluator {
                 // TODO: Relative import
                 Ok(Value::Unit)
             }
+
+            Stmt::Drop(name) => {
+                // Remove binding from environment
+                self.env.borrow_mut().remove(name);
+                Ok(Value::Unit)
+            }
         }
     }
 
@@ -981,6 +987,42 @@ impl Evaluator {
                     };
                 }
                 Ok(current)
+            }
+
+            // Let-in: ;= name value body
+            Expr::LetIn(name, value, body) => {
+                let val = self.eval_expr(value)?;
+                // Create new scope
+                let child_env = Env::with_parent(self.env.clone()).wrap();
+                child_env.borrow_mut().define(name.clone(), val);
+                // Evaluate body in new scope
+                let old_env = std::mem::replace(&mut self.env, child_env);
+                let result = self.eval_expr(body);
+                self.env = old_env;
+                result
+            }
+
+            // Command check: !? "cmd"
+            Expr::CmdCheck(cmd) => {
+                let cmd_val = self.eval_expr(cmd)?;
+                let cmd_str = match cmd_val {
+                    Value::String(s) => s,
+                    _ => return Err(EvalError::new("CmdCheck expects a string", loc.line, loc.column)),
+                };
+                let exists = crate::exec::command_exists(&cmd_str);
+                Ok(Value::Bool(exists))
+            }
+
+            // Select: <> | <- ch -> [x] body | ...
+            Expr::Select(_branches) => {
+                // TODO: Implement when channels are added
+                Err(EvalError::new("Select not yet implemented (channels required)", loc.line, loc.column))
+            }
+
+            // Broadcast: >< channels message
+            Expr::Broadcast(_channels, _message) => {
+                // TODO: Implement when channels are added
+                Err(EvalError::new("Broadcast not yet implemented (channels required)", loc.line, loc.column))
             }
 
             // TODO: Implement remaining expressions

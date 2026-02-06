@@ -1,0 +1,11 @@
+#!/usr/bin/env hog
+
+|= Fizzbuzz [n]
+  ?:
+    | (.= 0 (.% $n 15)) -> "FizzBuzz"
+    | (.= 0 (.% $n 3))  -> "Fizz"
+    | (.= 0 (.% $n 5))  -> "Buzz"
+    | _                 -> (:> $n @s)
+
+%> (%.. 1 21) [n]
+  ~> (Fizzbuzz $n)

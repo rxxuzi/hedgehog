@@ -1,0 +1,39 @@
+#!/usr/bin/env hog
+
+## Hedgehog Basics
+
+# Binding
+^= name "Alice"
+^= age 30
+
+# Output
+~> "Hello, $name!"
+~> "Age: $age"
+
+# Arithmetic
+~> .+ 10 20
+~> .* 3 4
+
+# List
+^= nums [1 2 3 4 5]
+~> $nums
+
+# Map
+~> %> $nums [x] .* $x 2
+
+# Filter
+~> %< $nums [x] .> $x 2
+
+# Fold
+~> %/ $nums 0 [acc x] .+ $acc $x
+
+# Conditional
+~> ?: (.> $age 18) "adult" "minor"
+
+# Function
+|= Double [x] .* $x 2
+~> (Double 21)
+
+# Record
+^= person {name: "Bob", age: 25}
+~> :. $person ["name"]

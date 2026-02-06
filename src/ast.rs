@@ -313,6 +313,26 @@ pub enum Expr {
 
     /// Nested access: :. expr path (2 children)
     NestAccess(Box<Node<Expr>>, Box<Node<Expr>>),
+
+    /// Let-in: ;= name value body (3 children)
+    LetIn(String, Box<Node<Expr>>, Box<Node<Expr>>),
+
+    /// Command exists check: !? "cmd" (1 child)
+    CmdCheck(Box<Node<Expr>>),
+
+    /// Select: <> | <- ch1 -> [x] body | <- ch2 -> [x] body (delimited)
+    Select(Vec<SelectBranch>),
+
+    /// Broadcast: >< channels message (2 children)
+    Broadcast(Box<Node<Expr>>, Box<Node<Expr>>),
+}
+
+/// Branch in a select expression
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelectBranch {
+    pub channel: Node<Expr>,
+    pub var: String,
+    pub body: Node<Expr>,
 }
 
 /// Statement
@@ -365,6 +385,9 @@ pub enum Stmt {
 
     /// Relative import: /. relative-path
     RelImport(String),
+
+    /// Drop: ;; name (explicit release)
+    Drop(String),
 }
 
 /// A complete Hedgehog program

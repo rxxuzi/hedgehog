@@ -68,6 +68,11 @@ impl Env {
         }
     }
 
+    /// Remove a binding from current scope
+    pub fn remove(&mut self, name: &str) {
+        self.bindings.remove(name);
+    }
+
     /// Check if a binding exists
     #[allow(dead_code)]
     pub fn contains(&self, name: &str) -> bool {
